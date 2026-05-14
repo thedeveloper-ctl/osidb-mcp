@@ -52,7 +52,7 @@ Optional keys forwarded by bindings: `BUGZILLA_API_KEY`, `JIRA_ACCESS_TOKEN`, `J
 
 ## Tools (read-only)
 
-All **MCP tools** require a working OSIDB session (env + Kerberos or basic auth). The CLI **`osidb-mcp --version` / `-V`** does not contact OSIDB (see [Install](#install)). The table lists every registered tool, in the same order as [`server.py`](src/osidb_mcp/server.py). For longer explanations, example prompts, and limitations, see **[TOOLS.md](TOOLS.md)**.
+All **MCP tools** require a working OSIDB session (env + Kerberos or basic auth). The CLI **`osidb-mcp --version` / `-V`** does not contact OSIDB (see [Install](#install)). The table lists every registered tool, in the same order as [`server.py`](src/osidb_mcp/server.py). For longer explanations, example prompts, and limitations, see **[TOOLS.md](TOOLS.md)**. If an **LLM agent** is calling these tools, read **[Using with AI agents](#using-with-ai-agents)** first.
 
 | Tool | Purpose |
 |------|---------|
@@ -88,6 +88,15 @@ All **MCP tools** require a working OSIDB session (env + Kerberos or basic auth)
 - **Critical open flaws touching `httpd`:** `search_flaws` or `flaws_list` with `impact="CRITICAL"`, `workflow_state_in` for non-terminal states, and `product_components=["httpd"]` or `components_in` / `affects_ps_component` as your data model requires.
 - **Unowned important CVEs for a RHEL major:** `search_flaws` with `owner_isempty=true`, `severities=["IMPORTANT"]`, and `product_modules` / `product_components` set to the **exact** PS strings your OSIDB uses for that major (confirm in your internal docs).
 - **Executive rollup:** **`get_cve_summary`** with optional date range and product filters; tune `group_by` if you only need severity or only workflow buckets.
+
+## Using with AI agents
+
+These tools return **structured JSON** (sometimes large). The **MCP host** (Cursor, Claude Desktop, API client) chooses the **LLM** — this server cannot select or downgrade a model for you.
+
+- **Good default:** A **mid-tier** model (e.g. Sonnet-class) is usually enough for reliable tool names, filters, and reading nested flaw / affect / tracker data.
+- **Smaller / cheaper models:** Reasonable for **narrow** tasks (one CVE, a known tool, counts only). Tight prompts help; ambiguous multi-step triage may need more retries or a larger model.
+- **Largest models:** Optional when the task is **underspecified** or you need unusually careful synthesis; for routine read-only chains they are **often more than needed**.
+- **Saving tokens:** Use **`include_fields` / `exclude_fields`** where supported; prefer **`flaws_count`** or **`get_cve_summary`** over pulling many full list pages; keep **`limit`** modest; ask the agent to **summarize** instead of echoing entire tool payloads unless you are debugging.
 
 ## Security
 

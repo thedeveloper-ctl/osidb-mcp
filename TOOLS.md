@@ -1,6 +1,6 @@
 # osidb-mcp — Tools reference
 
-This document describes each MCP tool exposed by **osidb-mcp**: what it is for, how analysts or agents usually invoke it (natural-language style), and important limitations. Install, environment variables, and Kerberos/basic auth are covered in [README.md](README.md). Source code lives at [github.com/vdanen/osidb-mcp](https://github.com/vdanen/osidb-mcp).
+This document describes each MCP tool exposed by **osidb-mcp**: what it is for, how analysts or agents usually invoke it (natural-language style), and important limitations. Install, environment variables, and Kerberos/basic auth are covered in [README.md](README.md). Source code lives at [github.com/vdanen/osidb-mcp](https://github.com/vdanen/osidb-mcp). **LLM agents:** model choice and token discipline are covered under [Using with AI agents](README.md#using-with-ai-agents) in the README.
 
 ## Shared behaviour (read this once)
 
