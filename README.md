@@ -107,6 +107,8 @@ pip-audit
 
 With [Makefile](Makefile): `make install`, `make test`, `make audit`, or `make check` (CI-equivalent). `make build` / `make upload` for releases (`upload` requires [twine](https://twine.readthedocs.io/) credentials).
 
+On **Debian/Ubuntu** (including local containers), install **`libkrb5-dev`** before `pip install` so the **`gssapi`** dependency can find `krb5-config` (Kerberos stack used with `osidb-bindings`).
+
 ## License
 
 MIT — see [LICENSE](LICENSE).
