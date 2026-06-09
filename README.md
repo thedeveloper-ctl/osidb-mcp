@@ -2,7 +2,23 @@
 
 Python [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) server for [OSIDB](https://github.com/RedHatProductSecurity/osidb), built on [`osidb-bindings`](https://github.com/RedHatProductSecurity/osidb-bindings). Use it from Cursor, Claude Desktop, or any MCP client over **stdio**. Forked from [vdanen/osidb-mcp](https://github.com/vdanen/osidb-mcp) with added **write/mutation tools**.
 
+## Quick run (no install)
+
+```bash
+uvx osidb-mcp
+```
+
+This fetches the latest release from PyPI into an ephemeral environment and runs it — no global install needed. Requires [uv](https://docs.astral.sh/uv/).
+
 ## Install
+
+```bash
+pip install osidb-mcp
+# or
+uv pip install osidb-mcp
+```
+
+For development (editable install from a local checkout):
 
 ```bash
 pip install -e .
@@ -26,6 +42,27 @@ Kerberos: the process must have a valid ticket (`kinit`) for the OSIDB HTTP serv
 Optional keys forwarded by bindings: `BUGZILLA_API_KEY`, `JIRA_ACCESS_TOKEN`, `JIRA_API_EMAIL`.
 
 ## Cursor / Claude MCP snippet
+
+Using `uvx` (recommended — no pre-install required):
+
+```json
+{
+  "mcpServers": {
+    "osidb": {
+      "command": "uvx",
+      "args": ["osidb-mcp"],
+      "env": {
+        "OSIDB_BASE_URL": "https://your-internal-osidb",
+        "OSIDB_AUTH": "kerberos",
+        "OSIDB_VERIFY_SSL": "true",
+        "OSIDB_MCP_ACCESS_MODE": "readonly"
+      }
+    }
+  }
+}
+```
+
+Or if `osidb-mcp` is already installed globally:
 
 ```json
 {
