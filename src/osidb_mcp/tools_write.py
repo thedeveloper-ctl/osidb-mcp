@@ -13,7 +13,7 @@ from osidb_mcp.session_holder import get_session
 _FLAW_FIELDS = (
     "title", "comment_zero", "embargoed", "cve_id", "impact", "components",
     "cve_description", "statement", "cwe_id", "source", "reported_dt",
-    "unembargo_dt", "mitigation",
+    "unembargo_dt", "mitigation", "owner",
 )
 
 _AFFECT_FIELDS = (
@@ -208,12 +208,13 @@ def flaw_update(
     reported_dt: str | None = None,
     unembargo_dt: str | None = None,
     mitigation: str | None = None,
+    owner: str | None = None,
 ) -> dict[str, Any]:
     """Update an existing OSIDB flaw (PUT /osidb/api/v2/flaws/{id}).
 
-    Retrieves the current flaw first to obtain ``updated_dt`` (optimistic
-    concurrency) and current field values, then merges caller-provided fields
-    over the existing data before issuing the PUT.
+    Uses raw HTTP to avoid osidb-bindings model validation issues (e.g.
+    unrecognized label types). Fetches only the fields needed for the
+    merge-and-PUT, then sends the update directly.
 
     Args:
         flaw_id: Flaw CVE id or internal UUID (required).
@@ -230,19 +231,37 @@ def flaw_update(
         reported_dt: Date reported (ISO 8601).
         unembargo_dt: Planned unembargo date (ISO 8601).
         mitigation: Mitigation advice.
+        owner: Flaw owner (Jira username for assignment).
     """
     session = get_session()
+    client = session.get_client_with_new_access_token()
+
+    # Raw HTTP instead of session.flaws.retrieve() to bypass osidb-bindings
+    # Pydantic model validation. The bindings (<=5.10) crash when deserializing
+    # flaws with label types not yet in their FlawLabelType enum (e.g. "bu").
+    # By fetching only the fields we need, we avoid triggering that validation.
+    needed_fields = ",".join(list(_FLAW_FIELDS) + ["updated_dt"])
 
     try:
-        current = session.flaws.retrieve(flaw_id)
-    except Exception as exc:
-        return _error_response(exc)
+        get_resp = requests.get(
+            f"{client.base_url}/osidb/api/v2/flaws/{flaw_id}",
+            params={"include_fields": needed_fields},
+            headers=client.get_headers(),
+            verify=client.verify_ssl,
+            auth=client.get_auth(),
+            timeout=client.get_timeout(),
+        )
+        get_resp.raise_for_status()
+    except requests.RequestException as exc:
+        return {"ok": False, **http_error_payload(exc)}
+
+    current_data = get_resp.json()
 
     flaw_data: dict[str, Any] = {}
     for field in _FLAW_FIELDS:
-        current_val = getattr(current, field, None)
-        if current_val is not None:
-            flaw_data[field] = to_jsonable(current_val)
+        val = current_data.get(field)
+        if val is not None:
+            flaw_data[field] = val
 
     overrides = {
         "title": title, "comment_zero": comment_zero, "embargoed": embargoed,
@@ -250,18 +269,28 @@ def flaw_update(
         "cve_description": cve_description, "statement": statement,
         "cwe_id": cwe_id, "source": source, "reported_dt": reported_dt,
         "unembargo_dt": unembargo_dt, "mitigation": mitigation,
+        "owner": owner,
     }
     for k, v in overrides.items():
         if v is not None:
             flaw_data[k] = v
 
-    flaw_data["updated_dt"] = to_jsonable(getattr(current, "updated_dt", None))
+    flaw_data["updated_dt"] = current_data.get("updated_dt")
 
     try:
-        result = session.flaws.update(flaw_id, flaw_data)
-        return {"ok": True, "flaw": to_jsonable(result)}
-    except Exception as exc:
-        return _error_response(exc)
+        put_resp = requests.put(
+            f"{client.base_url}/osidb/api/v2/flaws/{flaw_id}",
+            json=flaw_data,
+            headers=client.get_headers(),
+            verify=client.verify_ssl,
+            auth=client.get_auth(),
+            timeout=client.get_timeout(),
+        )
+        put_resp.raise_for_status()
+    except requests.RequestException as exc:
+        return {"ok": False, **http_error_payload(exc)}
+
+    return {"ok": True, "flaw": put_resp.json()}
 
 
 # ---------------------------------------------------------------------------
