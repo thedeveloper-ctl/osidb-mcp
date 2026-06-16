@@ -279,7 +279,9 @@ def create_server(settings: Settings) -> FastMCP:
         name="aegis_get_cve_analysis",
         description=(
             "Retrieve a cached/pre-computed AEGIS AI analysis for a CVE and feature. "
-            "Features include suggest-statement, suggest-impact, suggest-title, etc."
+            "Features include suggest-statement, suggest-impact, suggest-cwe, "
+            "suggest-description, suggest-affected-components, identify-pii, "
+            "cvss-diff-explainer."
         ),
     )(tools_aegis.aegis_get_cve_analysis)
     mcp.tool(
@@ -288,7 +290,10 @@ def create_server(settings: Settings) -> FastMCP:
             "Trigger a new AEGIS AI analysis for a CVE feature. "
             "Accepts a JSON body with CVE metadata (cve_id, title, comment_zero, "
             "cve_description, statement, components, comments, references, "
-            "embargoed, impact, cvss_scores, affects)."
+            "embargoed, impact, cvss_scores, affects). "
+            "Features: suggest-statement, suggest-impact, suggest-cwe, "
+            "suggest-description, suggest-affected-components, identify-pii, "
+            "cvss-diff-explainer."
         ),
     )(tools_aegis.aegis_run_cve_analysis)
     mcp.tool(
