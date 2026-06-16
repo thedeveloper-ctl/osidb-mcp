@@ -50,6 +50,7 @@ class Settings:
     jira_url: str | None = None
     jira_access_token: str | None = None
     jira_api_email: str | None = None
+    aegis_url: str | None = None
 
 
 def load_settings() -> Settings:
@@ -80,6 +81,8 @@ def load_settings() -> Settings:
     jira_token = os.environ.get("JIRA_ACCESS_TOKEN", "").strip() or None
     jira_email = os.environ.get("JIRA_API_EMAIL", "").strip() or None
 
+    aegis_url = os.environ.get("AEGIS_URL", "").strip() or None
+
     return Settings(
         base_url=base,
         auth=auth,  # type: ignore[arg-type]
@@ -91,4 +94,5 @@ def load_settings() -> Settings:
         jira_url=jira_url,
         jira_access_token=jira_token,
         jira_api_email=jira_email,
+        aegis_url=aegis_url,
     )
