@@ -5,6 +5,7 @@ from __future__ import annotations
 from mcp.server.fastmcp import FastMCP
 
 from osidb_mcp.config import AccessMode, Settings
+from osidb_mcp import tools_aegis
 from osidb_mcp import tools_read
 
 
@@ -272,6 +273,35 @@ def create_server(settings: Settings) -> FastMCP:
             "May fail if the exploits integration is not enabled on this OSIDB instance."
         ),
     )(tools_read.get_pending_exploit_actions)
+
+    # -- AEGIS AI-assisted analysis tools --
+    mcp.tool(
+        name="aegis_get_cve_analysis",
+        description=(
+            "Retrieve a cached/pre-computed AEGIS AI analysis for a CVE and feature. "
+            "Features include suggest-statement, suggest-impact, suggest-title, etc."
+        ),
+    )(tools_aegis.aegis_get_cve_analysis)
+    mcp.tool(
+        name="aegis_run_cve_analysis",
+        description=(
+            "Trigger a new AEGIS AI analysis for a CVE feature. "
+            "Accepts a JSON body with CVE metadata (cve_id, title, comment_zero, "
+            "cve_description, statement, components, comments, references, "
+            "embargoed, impact, cvss_scores, affects)."
+        ),
+    )(tools_aegis.aegis_run_cve_analysis)
+    mcp.tool(
+        name="aegis_get_component_analysis",
+        description="Retrieve AEGIS component-level analysis for a given feature and component name.",
+    )(tools_aegis.aegis_get_component_analysis)
+    mcp.tool(
+        name="aegis_get_kpi_metrics",
+        description=(
+            "Retrieve AEGIS KPI metrics for an analysis feature. "
+            "Useful for evaluating model quality and coverage."
+        ),
+    )(tools_aegis.aegis_get_kpi_metrics)
 
     if is_readwrite:
         from osidb_mcp import tools_write
