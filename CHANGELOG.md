@@ -1,3 +1,8 @@
+## 0.2.1
+
+- **Fix `extra_query` dates:** ISO date/datetime strings in `extra_query` (e.g. `created_dt__gte`, `reported_dt__gte`, `created_dt__date__gte`) are now parsed before calling `osidb-bindings`, which expects Python `datetime`/`date` objects. Fixes `'str' object has no attribute 'isoformat'` when filtering flaws by creation or report date.
+- **Docs:** README documents Homebrew install via [vdanen/osidb-mcp](https://github.com/vdanen/homebrew-osidb-mcp).
+
 ## 0.2.0
 
 - **Access mode:** `OSIDB_MCP_ACCESS_MODE` supports only `readonly` (default). `readwrite` is **rejected at startup** with a clear error until mutation MCP tools exist; removes misleading “warn and continue” behavior.
