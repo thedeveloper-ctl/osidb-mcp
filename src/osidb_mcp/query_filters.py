@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+import datetime
 import importlib
-from typing import Any
+from typing import Any, get_args, get_origin
 
 from osidb_bindings.bindings.python_client.api.osidb import (
     osidb_api_v2_affects_list,
@@ -16,11 +17,21 @@ _labels_list_mod = importlib.import_module(
 _affect_cvss_list_mod = importlib.import_module(
     "osidb_bindings.bindings.python_client.api.osidb.osidb_api_v2_affects_cvss_scores_list"
 )
+_trackers_list_mod = importlib.import_module(
+    "osidb_bindings.bindings.python_client.api.osidb.osidb_api_v2_trackers_list"
+)
 
 FLAWS_EXTRA_KEYS = frozenset(osidb_api_v2_flaws_list.QUERY_PARAMS.keys())
 AFFECTS_EXTRA_KEYS = frozenset(osidb_api_v2_affects_list.QUERY_PARAMS.keys())
 LABELS_EXTRA_KEYS = frozenset(_labels_list_mod.QUERY_PARAMS.keys())
 AFFECT_CVSS_SCORES_EXTRA_KEYS = frozenset(_affect_cvss_list_mod.QUERY_PARAMS.keys())
+TRACKERS_EXTRA_KEYS = frozenset(_trackers_list_mod.QUERY_PARAMS.keys())
+
+FLAWS_QUERY_PARAM_TYPES = osidb_api_v2_flaws_list.QUERY_PARAMS
+AFFECTS_QUERY_PARAM_TYPES = osidb_api_v2_affects_list.QUERY_PARAMS
+LABELS_QUERY_PARAM_TYPES = _labels_list_mod.QUERY_PARAMS
+AFFECT_CVSS_SCORES_QUERY_PARAM_TYPES = _affect_cvss_list_mod.QUERY_PARAMS
+TRACKERS_QUERY_PARAM_TYPES = _trackers_list_mod.QUERY_PARAMS
 
 EXTRAS_MAX_KEYS = 30
 EXTRAS_MAX_LIST_LEN = 100
@@ -28,7 +39,36 @@ LIST_LIMIT_MAX = 100
 DEFAULT_LIST_LIMIT = 50
 
 
-def _coerce_extra_value(value: Any) -> Any:
+def parse_dt(value: str) -> datetime.datetime:
+    s = value.strip()
+    if s.endswith("Z"):
+        s = s[:-1] + "+00:00"
+    return datetime.datetime.fromisoformat(s)
+
+
+def parse_date(value: str) -> datetime.date:
+    s = value.strip()
+    if "T" in s or s.endswith("Z"):
+        return parse_dt(s).date()
+    return datetime.date.fromisoformat(s)
+
+
+def _coerce_extra_value(value: Any, expected_type: type[Any] | None = None) -> Any:
+    if expected_type is datetime.datetime:
+        if isinstance(value, datetime.datetime):
+            return value
+        if isinstance(value, str):
+            return parse_dt(value)
+        raise ValueError("extra_query datetime values must be ISO strings or datetimes")
+    if expected_type is datetime.date:
+        if isinstance(value, datetime.datetime):
+            return value.date()
+        if isinstance(value, datetime.date):
+            return value
+        if isinstance(value, str):
+            return parse_date(value)
+        raise ValueError("extra_query date values must be ISO strings or dates")
+
     if value is None or isinstance(value, (bool, int, float, str)):
         return value
     if isinstance(value, list):
@@ -36,11 +76,16 @@ def _coerce_extra_value(value: Any) -> Any:
             raise ValueError(
                 f"extra_query list values must have at most {EXTRAS_MAX_LIST_LEN} items"
             )
+        item_type = None
+        if expected_type is not None and get_origin(expected_type) is list:
+            item_args = get_args(expected_type)
+            if item_args:
+                item_type = item_args[0]
         out = []
         for item in value:
             if not isinstance(item, (str, int, float, bool)):
                 raise ValueError("extra_query list items must be primitives")
-            out.append(item)
+            out.append(_coerce_extra_value(item, item_type))
         return out
     raise ValueError("extra_query values must be primitives or lists of primitives")
 
@@ -50,6 +95,7 @@ def merge_extra_query(
     extra: dict[str, Any] | None,
     *,
     allowlist: frozenset[str],
+    param_types: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     if not extra:
         return base
@@ -61,7 +107,8 @@ def merge_extra_query(
     for key, raw in extra.items():
         if key not in allowlist:
             raise ValueError(f"extra_query key not allowed: {key!r}")
-        merged[key] = _coerce_extra_value(raw)
+        expected = param_types.get(key) if param_types else None
+        merged[key] = _coerce_extra_value(raw, expected)
     return merged
 
 

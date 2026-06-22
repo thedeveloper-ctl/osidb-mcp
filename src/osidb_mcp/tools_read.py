@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import datetime
 import importlib
 from typing import Any, Literal
 from uuid import UUID
@@ -43,13 +42,20 @@ from osidb_bindings.bindings.python_client.models.osidb_api_v2_flaws_list_workfl
 from osidb_mcp.errors import http_error_payload
 from osidb_mcp.query_filters import (
     AFFECTS_EXTRA_KEYS,
+    AFFECTS_QUERY_PARAM_TYPES,
     AFFECT_CVSS_SCORES_EXTRA_KEYS,
+    AFFECT_CVSS_SCORES_QUERY_PARAM_TYPES,
     DEFAULT_LIST_LIMIT,
     FLAWS_EXTRA_KEYS,
+    FLAWS_QUERY_PARAM_TYPES,
     LABELS_EXTRA_KEYS,
+    LABELS_QUERY_PARAM_TYPES,
+    TRACKERS_EXTRA_KEYS,
+    TRACKERS_QUERY_PARAM_TYPES,
     clamp_limit,
     clamp_offset,
     merge_extra_query,
+    parse_dt,
 )
 from osidb_mcp.serialize import paginated_summary, to_jsonable
 from osidb_mcp.session_holder import get_session
@@ -57,7 +63,6 @@ from osidb_mcp.session_holder import get_session
 _trackers_list = importlib.import_module(
     "osidb_bindings.bindings.python_client.api.osidb.osidb_api_v2_trackers_list"
 )
-TRACKERS_EXTRA_KEYS = frozenset(_trackers_list.QUERY_PARAMS.keys())
 
 # Shown on flaw list/search responses so agents keep the stable OSIDB id when cve_id is empty.
 _FLAW_LIST_IDENTITY_HINT = (
@@ -96,15 +101,6 @@ def _parse_uuid_param(name: str, value: str) -> UUID:
         return UUID(str(value).strip())
     except ValueError as e:
         raise ValueError(f"{name} must be a UUID string") from e
-
-
-def _parse_dt(value: str | None) -> datetime.datetime | None:
-    if not value:
-        return None
-    s = value.strip()
-    if s.endswith("Z"):
-        s = s[:-1] + "+00:00:00"
-    return datetime.datetime.fromisoformat(s)
 
 
 def _impact_in(values: list[str] | None) -> list[OsidbApiV2FlawsListImpactInItem] | None:
@@ -244,7 +240,8 @@ def _build_flaws_kwargs(
         kw["owner__isempty"] = owner_isempty
     if cve_id_in:
         kw["cve_id__in"] = cve_id_in
-    ca, cb = _parse_dt(changed_after), _parse_dt(changed_before)
+    ca = parse_dt(changed_after) if changed_after else None
+    cb = parse_dt(changed_before) if changed_before else None
     if ca is not None:
         kw["changed_after"] = ca
     if cb is not None:
@@ -332,7 +329,12 @@ def flaws_list(
             limit=lim,
             offset=off,
         )
-        merged = merge_extra_query(base, extra_query, allowlist=FLAWS_EXTRA_KEYS)
+        merged = merge_extra_query(
+            base,
+            extra_query,
+            allowlist=FLAWS_EXTRA_KEYS,
+            param_types=FLAWS_QUERY_PARAM_TYPES,
+        )
         resp = get_session().flaws.retrieve_list(
             api_version=api_version,
             **merged,
@@ -411,7 +413,12 @@ def flaws_count(
         )
         base.pop("limit", None)
         base.pop("offset", None)
-        merged = merge_extra_query(base, extra_query, allowlist=FLAWS_EXTRA_KEYS)
+        merged = merge_extra_query(
+            base,
+            extra_query,
+            allowlist=FLAWS_EXTRA_KEYS,
+            param_types=FLAWS_QUERY_PARAM_TYPES,
+        )
         n = get_session().flaws.count(api_version=api_version, **merged)
         return {"ok": True, "count": n}
     except (requests.RequestException, ValueError) as e:
@@ -530,7 +537,12 @@ def affects_list(
             kw["include_fields"] = include_fields
         if exclude_fields:
             kw["exclude_fields"] = exclude_fields
-        merged = merge_extra_query(kw, extra_query, allowlist=AFFECTS_EXTRA_KEYS)
+        merged = merge_extra_query(
+            kw,
+            extra_query,
+            allowlist=AFFECTS_EXTRA_KEYS,
+            param_types=AFFECTS_QUERY_PARAM_TYPES,
+        )
         resp = get_session().affects.retrieve_list(
             api_version=api_version,
             **merged,
@@ -620,7 +632,10 @@ def trackers_list(
         if exclude_fields:
             kw["exclude_fields"] = exclude_fields
         merged = merge_extra_query(
-            kw, extra_query, allowlist=TRACKERS_EXTRA_KEYS
+            kw,
+            extra_query,
+            allowlist=TRACKERS_EXTRA_KEYS,
+            param_types=TRACKERS_QUERY_PARAM_TYPES,
         )
         merged = _finalize_trackers_kwargs(merged)
         resp = get_session().trackers.retrieve_list(
@@ -842,7 +857,12 @@ def labels_list(
     off = clamp_offset(offset)
     try:
         base: dict[str, Any] = {"limit": lim, "offset": off}
-        merged = merge_extra_query(base, extra_query, allowlist=LABELS_EXTRA_KEYS)
+        merged = merge_extra_query(
+            base,
+            extra_query,
+            allowlist=LABELS_EXTRA_KEYS,
+            param_types=LABELS_QUERY_PARAM_TYPES,
+        )
         resp = get_session().labels.retrieve_list(
             api_version=api_version,
             **merged,
@@ -877,7 +897,10 @@ def affect_cvss_scores_list(
         if exclude_fields:
             kw["exclude_fields"] = exclude_fields
         merged = merge_extra_query(
-            kw, extra_query, allowlist=AFFECT_CVSS_SCORES_EXTRA_KEYS
+            kw,
+            extra_query,
+            allowlist=AFFECT_CVSS_SCORES_EXTRA_KEYS,
+            param_types=AFFECT_CVSS_SCORES_QUERY_PARAM_TYPES,
         )
         resp = get_session().affects.cvss_scores.retrieve_list(
             aid,

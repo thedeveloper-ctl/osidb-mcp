@@ -1,4 +1,12 @@
-from osidb_mcp.query_filters import FLAWS_EXTRA_KEYS, merge_extra_query
+import datetime
+
+from osidb_mcp.query_filters import (
+    FLAWS_EXTRA_KEYS,
+    FLAWS_QUERY_PARAM_TYPES,
+    merge_extra_query,
+    parse_date,
+    parse_dt,
+)
 from osidb_mcp.tools_read import (
     _attach_flaw_list_identity_hint,
     _envelope_osidb_flaw_uuid_when_no_cve,
@@ -13,6 +21,7 @@ def test_merge_extra_allowlisted():
         base,
         {"title": "x"},
         allowlist=FLAWS_EXTRA_KEYS,
+        param_types=FLAWS_QUERY_PARAM_TYPES,
     )
     assert out["title"] == "x"
     assert out["limit"] == 10
@@ -25,11 +34,49 @@ def test_merge_extra_rejects_unknown():
             base,
             {"not_a_real_osidb_key": 1},
             allowlist=FLAWS_EXTRA_KEYS,
+            param_types=FLAWS_QUERY_PARAM_TYPES,
         )
     except ValueError as e:
         assert "not allowed" in str(e)
     else:
         raise AssertionError("expected ValueError")
+
+
+def test_merge_extra_coerces_datetime_strings():
+    out = merge_extra_query(
+        {"limit": 10},
+        {
+            "cve_id__isempty": True,
+            "created_dt__gte": "2026-05-01T00:00:00Z",
+            "reported_dt__gte": "2026-05-01",
+        },
+        allowlist=FLAWS_EXTRA_KEYS,
+        param_types=FLAWS_QUERY_PARAM_TYPES,
+    )
+    assert out["cve_id__isempty"] is True
+    assert isinstance(out["created_dt__gte"], datetime.datetime)
+    assert out["created_dt__gte"].isoformat().startswith("2026-05-01")
+    assert isinstance(out["reported_dt__gte"], datetime.datetime)
+
+
+def test_merge_extra_coerces_date_only_strings():
+    out = merge_extra_query(
+        {"limit": 10},
+        {"created_dt__date__gte": "2026-05-01"},
+        allowlist=FLAWS_EXTRA_KEYS,
+        param_types=FLAWS_QUERY_PARAM_TYPES,
+    )
+    assert out["created_dt__date__gte"] == datetime.date(2026, 5, 1)
+
+
+def test_parse_dt_accepts_z_suffix():
+    assert parse_dt("2026-05-01T00:00:00Z") == datetime.datetime(
+        2026, 5, 1, 0, 0, 0, tzinfo=datetime.timezone.utc
+    )
+
+
+def test_parse_date_from_date_string():
+    assert parse_date("2026-05-01") == datetime.date(2026, 5, 1)
 
 
 def test_get_cve_summary_invalid_group_by():
