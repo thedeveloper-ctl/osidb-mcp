@@ -24,6 +24,21 @@ _AFFECT_FIELDS = (
     "not_affected_justification",
 )
 
+_JUSTIFICATION_MAP: dict[str, str] = {
+    "COMPONENT_NOT_PRESENT": "Component not Present",
+    "INLINE_MITIGATIONS_ALREADY_EXIST": "Inline Mitigations already Exist",
+    "VULNERABLE_CODE_CANNOT_BE_CONTROLLED_BY_ADVERSARY": "Vulnerable Code cannot be Controlled by Adversary",
+    "VULNERABLE_CODE_NOT_IN_EXECUTE_PATH": "Vulnerable Code not in Execute Path",
+    "VULNERABLE_CODE_NOT_PRESENT": "Vulnerable Code not Present",
+}
+
+
+def _normalize_justification(value: str | None) -> str | None:
+    """Convert constant-style justification to OSIDB display-text format."""
+    if value is None:
+        return None
+    return _JUSTIFICATION_MAP.get(value, value)
+
 
 def _error_response(exc: BaseException) -> dict[str, Any]:
     if isinstance(exc, requests.RequestException):
@@ -490,6 +505,113 @@ def flaw_cvss_remove(
 
 
 # ---------------------------------------------------------------------------
+# affect_cvss_add
+# ---------------------------------------------------------------------------
+
+def affect_cvss_add(
+    affect_id: str,
+    cvss_scores: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Add CVSS score(s) to an existing affect.
+
+    Args:
+        affect_id: Affect UUID (required).
+        cvss_scores: List of dicts, each with ``cvss_version`` (V3 or V4),
+            ``vector`` (str, required), optional ``comment`` (str),
+            optional ``issuer`` (str, default RH).
+    """
+    session = get_session()
+
+    try:
+        affect = session.affects.retrieve(affect_id, include_fields="embargoed")
+        affect_embargoed = getattr(affect, "embargoed", False)
+    except Exception as exc:
+        return _error_response(exc)
+
+    created, errors = _create_subresources(
+        session.affects.cvss_scores,
+        affect_id,
+        cvss_scores,
+        affect_embargoed,
+        "cvss_score",
+        api_version="v1",
+    )
+    out: dict[str, Any] = {"ok": True, "created": created}
+    if errors:
+        out["partial"] = True
+        out["errors"] = errors
+    return out
+
+
+# ---------------------------------------------------------------------------
+# affect_cvss_update
+# ---------------------------------------------------------------------------
+
+def affect_cvss_update(
+    affect_id: str,
+    cvss_score_id: str,
+    *,
+    vector: str | None = None,
+    comment: str | None = None,
+    cvss_version: str | None = None,
+    issuer: str | None = None,
+) -> dict[str, Any]:
+    """Update a CVSS score on an affect (PUT /osidb/api/v1/affects/{id}/cvss_scores/{id}).
+
+    Uses raw HTTP to avoid an osidb-bindings serialization bug where
+    ``to_jsonable`` converts enums to strings and the bindings' ``update``
+    method later calls ``.copy()`` on them, raising AttributeError.
+
+    Args:
+        affect_id: Affect UUID (required).
+        cvss_score_id: CVSS score UUID (required).
+        vector: CVSS vector string.
+        comment: Score comment.
+        cvss_version: V3 or V4.
+        issuer: Score issuer (default RH).
+    """
+    session = get_session()
+
+    try:
+        current = session.affects.cvss_scores.retrieve(
+            affect_id, cvss_score_id, api_version="v1",
+        )
+    except Exception as exc:
+        return _error_response(exc)
+
+    data: dict[str, Any] = {}
+    for field in ("vector", "comment", "cvss_version", "issuer", "embargoed"):
+        val = getattr(current, field, None)
+        if val is not None:
+            data[field] = to_jsonable(val)
+    data["updated_dt"] = to_jsonable(getattr(current, "updated_dt", None))
+
+    if vector is not None:
+        data["vector"] = vector
+    if comment is not None:
+        data["comment"] = comment
+    if cvss_version is not None:
+        data["cvss_version"] = cvss_version
+    if issuer is not None:
+        data["issuer"] = issuer
+
+    client = session.get_client_with_new_access_token()
+    try:
+        resp = requests.put(
+            f"{client.base_url}/osidb/api/v1/affects/{affect_id}/cvss_scores/{cvss_score_id}",
+            json=data,
+            headers=client.get_headers(),
+            verify=client.verify_ssl,
+            auth=client.get_auth(),
+            timeout=client.get_timeout(),
+        )
+        resp.raise_for_status()
+        return {"ok": True, "cvss_score": resp.json()}
+    except Exception as exc:
+        return _error_response(exc)
+
+
+# ---------------------------------------------------------------------------
 # affect_update
 # ---------------------------------------------------------------------------
 
@@ -508,6 +630,9 @@ def affect_update(
     Retrieves the current affect first to obtain ``updated_dt`` (optimistic
     concurrency) and current field values, then merges caller-provided fields
     over the existing data before issuing the PUT.
+
+    Uses raw HTTP to avoid an osidb-bindings validation bug where
+    ``not_affected_justification`` values are rejected as invalid BlankEnum.
 
     Args:
         affect_uuid: Affect UUID (required).
@@ -543,19 +668,31 @@ def affect_update(
         "ps_component": ps_component,
         "purl": purl,
         "delegated_resolution": delegated_resolution,
-        "not_affected_justification": not_affected_justification,
+        "not_affected_justification": _normalize_justification(not_affected_justification),
     }
     for k, v in overrides.items():
         if v is not None:
             affect_data[k] = v
 
+    if affectedness == "NOTAFFECTED" and resolution is None:
+        affect_data["resolution"] = ""
+
     affect_data["updated_dt"] = to_jsonable(getattr(current, "updated_dt", None))
     affect_data["flaw"] = to_jsonable(getattr(current, "flaw", None))
     affect_data["embargoed"] = getattr(current, "embargoed", False)
 
+    client = session.get_client_with_new_access_token()
     try:
-        result = session.affects.update(affect_uuid, affect_data)
-        return {"ok": True, "affect": to_jsonable(result)}
+        resp = requests.put(
+            f"{client.base_url}/osidb/api/v2/affects/{affect_uuid}",
+            json=affect_data,
+            headers=client.get_headers(),
+            verify=client.verify_ssl,
+            auth=client.get_auth(),
+            timeout=client.get_timeout(),
+        )
+        resp.raise_for_status()
+        return {"ok": True, "affect": resp.json()}
     except Exception as exc:
         return _error_response(exc)
 
@@ -573,6 +710,9 @@ def affect_update_bulk(
     ``/osidb/api/v2/affects?uuid__in=...`` to obtain ``updated_dt`` for
     optimistic concurrency, merges caller-provided field overrides, then
     sends one bulk PUT.
+
+    Uses raw HTTP to avoid an osidb-bindings validation bug where
+    ``not_affected_justification`` values are rejected as invalid BlankEnum.
 
     Args:
         affects: List of dicts, each with ``affect_uuid`` (required) plus any
@@ -639,7 +779,12 @@ def affect_update_bulk(
                    "not_affected_justification"):
             v = spec.get(k)
             if v is not None:
+                if k == "not_affected_justification":
+                    v = _normalize_justification(v)
                 affect_data[k] = v
+
+        if spec.get("affectedness") == "NOTAFFECTED" and spec.get("resolution") is None:
+            affect_data["resolution"] = ""
 
         affect_data["uuid"] = affect_uuid
         affect_data["updated_dt"] = to_jsonable(getattr(current, "updated_dt", None))
@@ -655,12 +800,21 @@ def affect_update_bulk(
             "fetch_errors": fetch_errors,
         }
 
+    client = session.get_client_with_new_access_token()
     try:
-        result = session.affects.bulk_update(payloads)
-        resp: dict[str, Any] = {"ok": True, "updated": to_jsonable(result)}
+        resp = requests.put(
+            f"{client.base_url}/osidb/api/v2/affects/bulk",
+            json=payloads,
+            headers=client.get_headers(),
+            verify=client.verify_ssl,
+            auth=client.get_auth(),
+            timeout=client.get_timeout(),
+        )
+        resp.raise_for_status()
+        result: dict[str, Any] = {"ok": True, "updated": resp.json()}
         if fetch_errors:
-            resp["fetch_errors"] = fetch_errors
-        return resp
+            result["fetch_errors"] = fetch_errors
+        return result
     except Exception as exc:
         return _error_response(exc)
 

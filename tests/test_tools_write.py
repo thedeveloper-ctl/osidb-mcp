@@ -568,13 +568,23 @@ def _mock_affect_full(**overrides):
     return affect
 
 
+@patch("osidb_mcp.tools_write.requests.put")
 @patch("osidb_mcp.tools_write.get_session")
-def test_affect_update_success(mock_get_session: MagicMock) -> None:
+def test_affect_update_success(mock_get_session: MagicMock, mock_put: MagicMock) -> None:
     session = mock_get_session.return_value
     current = _mock_affect_full()
     session.affects.retrieve.return_value = current
-    updated = _mock_affect_full(affectedness="AFFECTED", resolution="FIX")
-    session.affects.update.return_value = updated
+    client = session.get_client_with_new_access_token.return_value
+    client.base_url = "https://osidb.example.com"
+    client.get_headers.return_value = {"Authorization": "Bearer tok"}
+    client.verify_ssl = True
+    client.get_auth.return_value = None
+    client.get_timeout.return_value = 300.0
+
+    put_resp = MagicMock()
+    put_resp.raise_for_status.return_value = None
+    put_resp.json.return_value = {"uuid": "bbb58a80-dd9c-43dd-ba19-61fa88a66714", "affectedness": "AFFECTED", "resolution": "FIX"}
+    mock_put.return_value = put_resp
 
     result = affect_update(
         affect_uuid="bbb58a80-dd9c-43dd-ba19-61fa88a66714",
@@ -583,24 +593,35 @@ def test_affect_update_success(mock_get_session: MagicMock) -> None:
     )
 
     assert result["ok"] is True
-    session.affects.update.assert_called_once()
-    update_data = session.affects.update.call_args[0][1]
+    mock_put.assert_called_once()
+    update_data = mock_put.call_args[1]["json"]
     assert update_data["affectedness"] == "AFFECTED"
     assert update_data["resolution"] == "FIX"
     assert update_data["ps_component"] == "gstreamer1-plugins-bad-free"
     assert update_data["updated_dt"] == "2026-06-08T14:00:00Z"
 
 
+@patch("osidb_mcp.tools_write.requests.put")
 @patch("osidb_mcp.tools_write.get_session")
-def test_affect_update_notaffected_with_justification(mock_get_session: MagicMock) -> None:
+def test_affect_update_notaffected_with_justification(mock_get_session: MagicMock, mock_put: MagicMock) -> None:
     session = mock_get_session.return_value
     current = _mock_affect_full()
     session.affects.retrieve.return_value = current
-    updated = _mock_affect_full(
-        affectedness="NOTAFFECTED",
-        not_affected_justification="COMPONENT_NOT_PRESENT",
-    )
-    session.affects.update.return_value = updated
+    client = session.get_client_with_new_access_token.return_value
+    client.base_url = "https://osidb.example.com"
+    client.get_headers.return_value = {"Authorization": "Bearer tok"}
+    client.verify_ssl = True
+    client.get_auth.return_value = None
+    client.get_timeout.return_value = 300.0
+
+    put_resp = MagicMock()
+    put_resp.raise_for_status.return_value = None
+    put_resp.json.return_value = {
+        "uuid": "bbb58a80-dd9c-43dd-ba19-61fa88a66714",
+        "affectedness": "NOTAFFECTED",
+        "not_affected_justification": "COMPONENT_NOT_PRESENT",
+    }
+    mock_put.return_value = put_resp
 
     result = affect_update(
         affect_uuid="bbb58a80-dd9c-43dd-ba19-61fa88a66714",
@@ -609,10 +630,11 @@ def test_affect_update_notaffected_with_justification(mock_get_session: MagicMoc
     )
 
     assert result["ok"] is True
-    session.affects.update.assert_called_once()
-    update_data = session.affects.update.call_args[0][1]
+    mock_put.assert_called_once()
+    update_data = mock_put.call_args[1]["json"]
     assert update_data["affectedness"] == "NOTAFFECTED"
-    assert update_data["not_affected_justification"] == "COMPONENT_NOT_PRESENT"
+    assert update_data["not_affected_justification"] == "Component not Present"
+    assert update_data["resolution"] == ""
 
 
 @patch("osidb_mcp.tools_write.get_session")
@@ -625,14 +647,23 @@ def test_affect_update_retrieve_fails(mock_get_session: MagicMock) -> None:
     assert result["ok"] is False
 
 
+@patch("osidb_mcp.tools_write.requests.put")
 @patch("osidb_mcp.tools_write.get_session")
-def test_affect_update_put_fails(mock_get_session: MagicMock) -> None:
+def test_affect_update_put_fails(mock_get_session: MagicMock, mock_put: MagicMock) -> None:
     session = mock_get_session.return_value
     session.affects.retrieve.return_value = _mock_affect_full()
+    client = session.get_client_with_new_access_token.return_value
+    client.base_url = "https://osidb.example.com"
+    client.get_headers.return_value = {}
+    client.verify_ssl = True
+    client.get_auth.return_value = None
+    client.get_timeout.return_value = 300.0
+
     resp = MagicMock()
     resp.status_code = 409
     resp.text = "Conflict"
-    session.affects.update.side_effect = requests.HTTPError(response=resp)
+    mock_put.return_value = resp
+    resp.raise_for_status.side_effect = requests.HTTPError(response=resp)
 
     result = affect_update(
         affect_uuid="bbb58a80-dd9c-43dd-ba19-61fa88a66714",
@@ -1654,20 +1685,29 @@ def _mock_list_response(affects):
     return resp
 
 
+@patch("osidb_mcp.tools_write.requests.put")
 @patch("osidb_mcp.tools_write.get_session")
-def test_affect_update_bulk_success(mock_get_session: MagicMock) -> None:
+def test_affect_update_bulk_success(mock_get_session: MagicMock, mock_put: MagicMock) -> None:
     session = mock_get_session.return_value
 
     affect_a = _mock_affect_full(uuid="aaa-111", affectedness="NEW")
     affect_b = _mock_affect_full(uuid="bbb-222", affectedness="NEW")
     session.affects.retrieve_list.return_value = _mock_list_response([affect_a, affect_b])
 
-    bulk_result = MagicMock()
-    bulk_result.to_dict.return_value = [
+    client = session.get_client_with_new_access_token.return_value
+    client.base_url = "https://osidb.example.com"
+    client.get_headers.return_value = {"Authorization": "Bearer tok"}
+    client.verify_ssl = True
+    client.get_auth.return_value = None
+    client.get_timeout.return_value = 300.0
+
+    put_resp = MagicMock()
+    put_resp.raise_for_status.return_value = None
+    put_resp.json.return_value = [
         {"uuid": "aaa-111", "affectedness": "AFFECTED", "resolution": "FIX"},
         {"uuid": "bbb-222", "affectedness": "AFFECTED", "resolution": "DEFER"},
     ]
-    session.affects.bulk_update.return_value = bulk_result
+    mock_put.return_value = put_resp
 
     result = affect_update_bulk(affects=[
         {"affect_uuid": "aaa-111", "affectedness": "AFFECTED", "resolution": "FIX"},
@@ -1679,8 +1719,8 @@ def test_affect_update_bulk_success(mock_get_session: MagicMock) -> None:
     session.affects.retrieve_list.assert_called_once_with(
         uuid__in=["aaa-111", "bbb-222"], limit=2,
     )
-    session.affects.bulk_update.assert_called_once()
-    payloads = session.affects.bulk_update.call_args[0][0]
+    mock_put.assert_called_once()
+    payloads = mock_put.call_args[1]["json"]
     assert len(payloads) == 2
     assert payloads[0]["uuid"] == "aaa-111"
     assert payloads[0]["affectedness"] == "AFFECTED"
@@ -1690,37 +1730,47 @@ def test_affect_update_bulk_success(mock_get_session: MagicMock) -> None:
     assert payloads[1]["resolution"] == "DEFER"
 
 
+@patch("osidb_mcp.tools_write.requests.put")
 @patch("osidb_mcp.tools_write.get_session")
-def test_affect_update_bulk_not_affected_justification(mock_get_session: MagicMock) -> None:
+def test_affect_update_bulk_not_affected_justification(mock_get_session: MagicMock, mock_put: MagicMock) -> None:
     session = mock_get_session.return_value
 
     affect_a = _mock_affect_full(uuid="aaa-111", affectedness="NEW")
     session.affects.retrieve_list.return_value = _mock_list_response([affect_a])
 
-    bulk_result = MagicMock()
-    bulk_result.to_dict.return_value = [
+    client = session.get_client_with_new_access_token.return_value
+    client.base_url = "https://osidb.example.com"
+    client.get_headers.return_value = {"Authorization": "Bearer tok"}
+    client.verify_ssl = True
+    client.get_auth.return_value = None
+    client.get_timeout.return_value = 300.0
+
+    put_resp = MagicMock()
+    put_resp.raise_for_status.return_value = None
+    put_resp.json.return_value = [
         {
             "uuid": "aaa-111",
-            "affectedness": "NOT_AFFECTED",
+            "affectedness": "NOTAFFECTED",
             "not_affected_justification": "VULNERABLE_CODE_NOT_PRESENT",
         },
     ]
-    session.affects.bulk_update.return_value = bulk_result
+    mock_put.return_value = put_resp
 
     result = affect_update_bulk(affects=[
         {
             "affect_uuid": "aaa-111",
-            "affectedness": "NOT_AFFECTED",
+            "affectedness": "NOTAFFECTED",
             "not_affected_justification": "VULNERABLE_CODE_NOT_PRESENT",
         },
     ])
 
     assert result["ok"] is True
-    session.affects.bulk_update.assert_called_once()
-    payloads = session.affects.bulk_update.call_args[0][0]
+    mock_put.assert_called_once()
+    payloads = mock_put.call_args[1]["json"]
     assert len(payloads) == 1
-    assert payloads[0]["affectedness"] == "NOT_AFFECTED"
-    assert payloads[0]["not_affected_justification"] == "VULNERABLE_CODE_NOT_PRESENT"
+    assert payloads[0]["affectedness"] == "NOTAFFECTED"
+    assert payloads[0]["not_affected_justification"] == "Vulnerable Code not Present"
+    assert payloads[0]["resolution"] == ""
 
 
 @patch("osidb_mcp.tools_write.get_session")
@@ -1732,16 +1782,25 @@ def test_affect_update_bulk_empty_list(mock_get_session: MagicMock) -> None:
     mock_get_session.assert_not_called()
 
 
+@patch("osidb_mcp.tools_write.requests.put")
 @patch("osidb_mcp.tools_write.get_session")
-def test_affect_update_bulk_partial_not_found(mock_get_session: MagicMock) -> None:
+def test_affect_update_bulk_partial_not_found(mock_get_session: MagicMock, mock_put: MagicMock) -> None:
     session = mock_get_session.return_value
 
     affect_a = _mock_affect_full(uuid="aaa-111")
     session.affects.retrieve_list.return_value = _mock_list_response([affect_a])
 
-    bulk_result = MagicMock()
-    bulk_result.to_dict.return_value = [{"uuid": "aaa-111", "affectedness": "AFFECTED"}]
-    session.affects.bulk_update.return_value = bulk_result
+    client = session.get_client_with_new_access_token.return_value
+    client.base_url = "https://osidb.example.com"
+    client.get_headers.return_value = {"Authorization": "Bearer tok"}
+    client.verify_ssl = True
+    client.get_auth.return_value = None
+    client.get_timeout.return_value = 300.0
+
+    put_resp = MagicMock()
+    put_resp.raise_for_status.return_value = None
+    put_resp.json.return_value = [{"uuid": "aaa-111", "affectedness": "AFFECTED"}]
+    mock_put.return_value = put_resp
 
     result = affect_update_bulk(affects=[
         {"affect_uuid": "aaa-111", "affectedness": "AFFECTED"},
@@ -1752,8 +1811,8 @@ def test_affect_update_bulk_partial_not_found(mock_get_session: MagicMock) -> No
     assert len(result["fetch_errors"]) == 1
     assert result["fetch_errors"][0]["affect_uuid"] == "bbb-222"
     assert "not found" in result["fetch_errors"][0]["error"]
-    session.affects.bulk_update.assert_called_once()
-    payloads = session.affects.bulk_update.call_args[0][0]
+    mock_put.assert_called_once()
+    payloads = mock_put.call_args[1]["json"]
     assert len(payloads) == 1
 
 
@@ -1787,16 +1846,25 @@ def test_affect_update_bulk_all_not_found(mock_get_session: MagicMock) -> None:
     session.affects.bulk_update.assert_not_called()
 
 
+@patch("osidb_mcp.tools_write.requests.put")
 @patch("osidb_mcp.tools_write.get_session")
-def test_affect_update_bulk_put_fails(mock_get_session: MagicMock) -> None:
+def test_affect_update_bulk_put_fails(mock_get_session: MagicMock, mock_put: MagicMock) -> None:
     session = mock_get_session.return_value
     affect = _mock_affect_full()
     session.affects.retrieve_list.return_value = _mock_list_response([affect])
 
+    client = session.get_client_with_new_access_token.return_value
+    client.base_url = "https://osidb.example.com"
+    client.get_headers.return_value = {}
+    client.verify_ssl = True
+    client.get_auth.return_value = None
+    client.get_timeout.return_value = 300.0
+
     resp = MagicMock()
     resp.status_code = 409
     resp.text = "Conflict"
-    session.affects.bulk_update.side_effect = requests.HTTPError(response=resp)
+    mock_put.return_value = resp
+    resp.raise_for_status.side_effect = requests.HTTPError(response=resp)
 
     result = affect_update_bulk(affects=[
         {"affect_uuid": "bbb58a80-dd9c-43dd-ba19-61fa88a66714", "affectedness": "AFFECTED"},
@@ -1806,16 +1874,25 @@ def test_affect_update_bulk_put_fails(mock_get_session: MagicMock) -> None:
     assert result["status_code"] == 409
 
 
+@patch("osidb_mcp.tools_write.requests.put")
 @patch("osidb_mcp.tools_write.get_session")
-def test_affect_update_bulk_missing_uuid(mock_get_session: MagicMock) -> None:
+def test_affect_update_bulk_missing_uuid(mock_get_session: MagicMock, mock_put: MagicMock) -> None:
     session = mock_get_session.return_value
 
     affect_a = _mock_affect_full(uuid="aaa-111")
     session.affects.retrieve_list.return_value = _mock_list_response([affect_a])
 
-    bulk_result = MagicMock()
-    bulk_result.to_dict.return_value = [{"uuid": "aaa-111"}]
-    session.affects.bulk_update.return_value = bulk_result
+    client = session.get_client_with_new_access_token.return_value
+    client.base_url = "https://osidb.example.com"
+    client.get_headers.return_value = {"Authorization": "Bearer tok"}
+    client.verify_ssl = True
+    client.get_auth.return_value = None
+    client.get_timeout.return_value = 300.0
+
+    put_resp = MagicMock()
+    put_resp.raise_for_status.return_value = None
+    put_resp.json.return_value = [{"uuid": "aaa-111"}]
+    mock_put.return_value = put_resp
 
     result = affect_update_bulk(affects=[
         {"affectedness": "AFFECTED"},
@@ -1828,5 +1905,5 @@ def test_affect_update_bulk_missing_uuid(mock_get_session: MagicMock) -> None:
     session.affects.retrieve_list.assert_called_once_with(
         uuid__in=["aaa-111"], limit=1,
     )
-    payloads = session.affects.bulk_update.call_args[0][0]
+    payloads = mock_put.call_args[1]["json"]
     assert len(payloads) == 1
