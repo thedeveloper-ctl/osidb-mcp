@@ -6,6 +6,8 @@ import requests
 
 from osidb_mcp.tools_write import (
     affect_add,
+    affect_cvss_add,
+    affect_cvss_update,
     affect_remove,
     affect_update,
     affect_update_bulk,
@@ -1078,6 +1080,194 @@ def test_cvss_remove_error(mock_get_session: MagicMock) -> None:
     result = flaw_cvss_remove(
         flaw_id="aaa58a80-dd9c-43dd-ba19-61fa88a66714",
         cvss_score_id="bad-uuid",
+    )
+
+    assert result["ok"] is False
+    assert result["status_code"] == 404
+
+
+# ---------------------------------------------------------------------------
+# affect_cvss_add tests (uses bindings via _create_subresources, v2 API)
+# ---------------------------------------------------------------------------
+
+@patch("osidb_mcp.tools_write.get_session")
+def test_affect_cvss_add_success(mock_get_session: MagicMock) -> None:
+    session = mock_get_session.return_value
+    session.affects.retrieve.return_value = _mock_affect_full(embargoed=False)
+    session.affects.cvss_scores.create.return_value = _mock_subresource("cvss-1")
+
+    result = affect_cvss_add(
+        affect_id="bbb58a80-dd9c-43dd-ba19-61fa88a66714",
+        cvss_scores=[{"cvss_version": "V3", "vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:L/I:N/A:H"}],
+    )
+
+    assert result["ok"] is True
+    assert len(result["created"]) == 1
+    assert "partial" not in result
+
+    session.affects.cvss_scores.create.assert_called_once()
+    cvss_data = session.affects.cvss_scores.create.call_args[0][0]
+    assert cvss_data["embargoed"] is False
+    assert "api_version" not in session.affects.cvss_scores.create.call_args[1]
+
+
+@patch("osidb_mcp.tools_write.get_session")
+def test_affect_cvss_add_multiple(mock_get_session: MagicMock) -> None:
+    session = mock_get_session.return_value
+    session.affects.retrieve.return_value = _mock_affect_full(embargoed=True)
+    session.affects.cvss_scores.create.side_effect = [
+        _mock_subresource("cvss-1"),
+        _mock_subresource("cvss-2"),
+    ]
+
+    result = affect_cvss_add(
+        affect_id="bbb58a80-dd9c-43dd-ba19-61fa88a66714",
+        cvss_scores=[
+            {"cvss_version": "V3", "vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:L/I:N/A:H"},
+            {"cvss_version": "V4", "vector": "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:P/VC:L/VI:N/VA:H/SC:N/SI:N/SA:N"},
+        ],
+    )
+
+    assert result["ok"] is True
+    assert len(result["created"]) == 2
+    assert "partial" not in result
+
+
+@patch("osidb_mcp.tools_write.get_session")
+def test_affect_cvss_add_not_found(mock_get_session: MagicMock) -> None:
+    session = mock_get_session.return_value
+    resp = MagicMock()
+    resp.status_code = 404
+    resp.text = "Not found"
+    session.affects.retrieve.side_effect = requests.HTTPError(response=resp)
+
+    result = affect_cvss_add(
+        affect_id="nonexistent",
+        cvss_scores=[{"cvss_version": "V3", "vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:L/I:N/A:H"}],
+    )
+
+    assert result["ok"] is False
+    assert result["status_code"] == 404
+
+
+@patch("osidb_mcp.tools_write.get_session")
+def test_affect_cvss_add_partial_failure(mock_get_session: MagicMock) -> None:
+    session = mock_get_session.return_value
+    session.affects.retrieve.return_value = _mock_affect_full(embargoed=True)
+    session.affects.cvss_scores.create.side_effect = [
+        _mock_subresource("cvss-1"),
+        requests.ConnectionError("timeout"),
+    ]
+
+    result = affect_cvss_add(
+        affect_id="bbb58a80-dd9c-43dd-ba19-61fa88a66714",
+        cvss_scores=[
+            {"cvss_version": "V3", "vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:L/I:N/A:H"},
+            {"cvss_version": "V4", "vector": "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:P/VC:L/VI:N/VA:H/SC:N/SI:N/SA:N"},
+        ],
+    )
+
+    assert result["ok"] is True
+    assert result["partial"] is True
+    assert len(result["created"]) == 1
+    assert len(result["errors"]) == 1
+    assert result["errors"][0]["index"] == 1
+
+
+# ---------------------------------------------------------------------------
+# affect_cvss_update tests (raw HTTP to v2 API due to bindings serialization bug)
+# ---------------------------------------------------------------------------
+
+@patch("osidb_mcp.tools_write.requests.put")
+@patch("osidb_mcp.tools_write.get_session")
+def test_affect_cvss_update_success(mock_get_session: MagicMock, mock_put: MagicMock) -> None:
+    session = mock_get_session.return_value
+    current = MagicMock()
+    current.vector = "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:L/I:N/A:H"
+    current.comment = ""
+    current.cvss_version = "V3"
+    current.embargoed = False
+    current.updated_dt = "2026-06-08T12:00:00Z"
+    session.affects.cvss_scores.retrieve.return_value = current
+
+    client = session.get_client_with_new_access_token.return_value
+    client.base_url = "https://osidb.example.com"
+    client.get_headers.return_value = {"Authorization": "Bearer tok"}
+    client.verify_ssl = True
+    client.get_auth.return_value = None
+    client.get_timeout.return_value = 300.0
+
+    put_resp = MagicMock()
+    put_resp.raise_for_status.return_value = None
+    put_resp.json.return_value = {
+        "uuid": "cvss-1",
+        "vector": "CVSS:3.1/AV:N/AC:H/PR:N/UI:R/S:U/C:L/I:N/A:H",
+    }
+    mock_put.return_value = put_resp
+
+    result = affect_cvss_update(
+        affect_id="bbb58a80-dd9c-43dd-ba19-61fa88a66714",
+        cvss_score_id="cvss-1",
+        vector="CVSS:3.1/AV:N/AC:H/PR:N/UI:R/S:U/C:L/I:N/A:H",
+    )
+
+    assert result["ok"] is True
+    assert result["cvss_score"]["vector"] == "CVSS:3.1/AV:N/AC:H/PR:N/UI:R/S:U/C:L/I:N/A:H"
+    mock_put.assert_called_once()
+    put_url = mock_put.call_args[0][0]
+    assert "/api/v2/affects/" in put_url
+    assert "/cvss-scores/cvss-1" in put_url
+    assert put_url.endswith("cvss-scores/cvss-1")
+    assert mock_put.call_args[1]["json"]["vector"] == "CVSS:3.1/AV:N/AC:H/PR:N/UI:R/S:U/C:L/I:N/A:H"
+    assert "issuer" not in mock_put.call_args[1]["json"]
+
+
+@patch("osidb_mcp.tools_write.requests.put")
+@patch("osidb_mcp.tools_write.get_session")
+def test_affect_cvss_update_http_error(mock_get_session: MagicMock, mock_put: MagicMock) -> None:
+    session = mock_get_session.return_value
+    current = MagicMock()
+    current.vector = "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:L/I:N/A:H"
+    current.comment = ""
+    current.cvss_version = "V3"
+    current.embargoed = False
+    current.updated_dt = "2026-06-08T12:00:00Z"
+    session.affects.cvss_scores.retrieve.return_value = current
+
+    client = session.get_client_with_new_access_token.return_value
+    client.base_url = "https://osidb.example.com"
+    client.get_headers.return_value = {}
+    client.verify_ssl = True
+    client.get_auth.return_value = None
+    client.get_timeout.return_value = 300.0
+
+    resp = MagicMock()
+    resp.status_code = 400
+    resp.text = "Bad request"
+    mock_put.return_value = resp
+    resp.raise_for_status.side_effect = requests.HTTPError(response=resp)
+
+    result = affect_cvss_update(
+        affect_id="bbb58a80-dd9c-43dd-ba19-61fa88a66714",
+        cvss_score_id="cvss-1",
+        vector="bad-vector",
+    )
+
+    assert result["ok"] is False
+
+
+@patch("osidb_mcp.tools_write.get_session")
+def test_affect_cvss_update_retrieve_error(mock_get_session: MagicMock) -> None:
+    session = mock_get_session.return_value
+    resp = MagicMock()
+    resp.status_code = 404
+    resp.text = "Not found"
+    session.affects.cvss_scores.retrieve.side_effect = requests.HTTPError(response=resp)
+
+    result = affect_cvss_update(
+        affect_id="nonexistent",
+        cvss_score_id="cvss-1",
+        vector="CVSS:3.1/AV:N/AC:H/PR:N/UI:R/S:U/C:L/I:N/A:H",
     )
 
     assert result["ok"] is False

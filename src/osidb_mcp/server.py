@@ -398,6 +398,26 @@ def create_server(settings: Settings) -> FastMCP:
         )(tools_write.flaw_cvss_remove)
 
         mcp.tool(
+            name="affect_cvss_add",
+            description=(
+                "Add CVSS score(s) to an existing affect "
+                "(POST /osidb/api/v2/affects/{id}/cvss-scores). "
+                "Each score needs ``cvss_version`` (V3 or V4) and ``vector``. "
+                "Issuer is read-only and always set to RH by OSIDB."
+            ),
+        )(tools_write.affect_cvss_add)
+
+        mcp.tool(
+            name="affect_cvss_update",
+            description=(
+                "Update a CVSS score on an affect "
+                "(PUT /osidb/api/v2/affects/{id}/cvss-scores/{id}). "
+                "Auto-fetches the current score for optimistic concurrency. "
+                "Issuer is read-only on v2 and cannot be changed."
+            ),
+        )(tools_write.affect_cvss_update)
+
+        mcp.tool(
             name="affect_update",
             description=(
                 "Update fields on an existing affect (PUT /osidb/api/v2/affects/{uuid}). "

@@ -514,11 +514,14 @@ def affect_cvss_add(
 ) -> dict[str, Any]:
     """Add CVSS score(s) to an existing affect.
 
+    Uses the v2 API (POST /osidb/api/v2/affects/{id}/cvss-scores) because
+    v1 is read-only for affect CVSS scores.  The ``issuer`` field is
+    read-only on v2 and always forced to RH by OSIDB.
+
     Args:
         affect_id: Affect UUID (required).
         cvss_scores: List of dicts, each with ``cvss_version`` (V3 or V4),
-            ``vector`` (str, required), optional ``comment`` (str),
-            optional ``issuer`` (str, default RH).
+            ``vector`` (str, required), optional ``comment`` (str).
     """
     session = get_session()
 
@@ -534,7 +537,6 @@ def affect_cvss_add(
         cvss_scores,
         affect_embargoed,
         "cvss_score",
-        api_version="v1",
     )
     out: dict[str, Any] = {"ok": True, "created": created}
     if errors:
@@ -554,13 +556,15 @@ def affect_cvss_update(
     vector: str | None = None,
     comment: str | None = None,
     cvss_version: str | None = None,
-    issuer: str | None = None,
 ) -> dict[str, Any]:
-    """Update a CVSS score on an affect (PUT /osidb/api/v1/affects/{id}/cvss_scores/{id}).
+    """Update a CVSS score on an affect (PUT /osidb/api/v2/affects/{id}/cvss-scores/{id}).
 
-    Uses raw HTTP to avoid an osidb-bindings serialization bug where
+    Uses raw HTTP to work around an osidb-bindings serialization bug where
     ``to_jsonable`` converts enums to strings and the bindings' ``update``
     method later calls ``.copy()`` on them, raising AttributeError.
+
+    Note: ``issuer`` is read-only on the v2 API (always forced to RH by OSIDB)
+    and cannot be changed via update.
 
     Args:
         affect_id: Affect UUID (required).
@@ -568,19 +572,18 @@ def affect_cvss_update(
         vector: CVSS vector string.
         comment: Score comment.
         cvss_version: V3 or V4.
-        issuer: Score issuer (default RH).
     """
     session = get_session()
 
     try:
         current = session.affects.cvss_scores.retrieve(
-            affect_id, cvss_score_id, api_version="v1",
+            affect_id, cvss_score_id,
         )
     except Exception as exc:
         return _error_response(exc)
 
     data: dict[str, Any] = {}
-    for field in ("vector", "comment", "cvss_version", "issuer", "embargoed"):
+    for field in ("vector", "comment", "cvss_version", "embargoed"):
         val = getattr(current, field, None)
         if val is not None:
             data[field] = to_jsonable(val)
@@ -592,13 +595,11 @@ def affect_cvss_update(
         data["comment"] = comment
     if cvss_version is not None:
         data["cvss_version"] = cvss_version
-    if issuer is not None:
-        data["issuer"] = issuer
 
     client = session.get_client_with_new_access_token()
     try:
         resp = requests.put(
-            f"{client.base_url}/osidb/api/v1/affects/{affect_id}/cvss_scores/{cvss_score_id}",
+            f"{client.base_url}/osidb/api/v2/affects/{affect_id}/cvss-scores/{cvss_score_id}",
             json=data,
             headers=client.get_headers(),
             verify=client.verify_ssl,
