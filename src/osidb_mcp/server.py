@@ -534,9 +534,39 @@ def create_server(settings: Settings) -> FastMCP:
             description=(
                 "Add package version info to a flaw "
                 "(POST /osidb/api/v1/flaws/{id}/package_versions). "
-                "Each version needs ``version`` and ``status`` (AFFECTED, UNAFFECTED, UNKNOWN)."
+                "Each version entry has a ``version`` string. All versions listed are "
+                "implicitly 'fixed_in' (unaffected) versions per the OSIDB data model. "
+                "The model defines a VersionStatus enum (AFFECTED = version is vulnerable, "
+                "UNAFFECTED = version contains the fix / corresponds to Bugzilla fixed_in, "
+                "UNKNOWN = status not yet determined) but the ``status`` field is NOT yet "
+                "wired to the PackageVer DB model. Currently every version stored here is "
+                "treated as UNAFFECTED (fixed_in). Only list fixed versions, not affected ones."
             ),
         )(tools_write.flaw_package_version_add)
+
+        mcp.tool(
+            name="flaw_package_version_update",
+            description=(
+                "Update a package version entry on a flaw "
+                "(PUT /osidb/api/v1/flaws/{id}/package_versions/{id}). "
+                "Replaces the versions list entirely. Auto-fetches ``updated_dt`` for "
+                "optimistic concurrency. All versions listed are implicitly 'fixed_in' "
+                "(unaffected) versions per the OSIDB data model. "
+                "VersionStatus semantics: AFFECTED = version is vulnerable, "
+                "UNAFFECTED = version contains the fix (Bugzilla fixed_in), "
+                "UNKNOWN = status not yet determined. Note: ``status`` field is NOT yet "
+                "wired to the PackageVer DB model; all stored versions are treated as "
+                "UNAFFECTED. Only list fixed versions, not affected ones."
+            ),
+        )(tools_write.flaw_package_version_update)
+
+        mcp.tool(
+            name="flaw_package_version_delete",
+            description=(
+                "Delete a package version entry from a flaw "
+                "(DELETE /osidb/api/v1/flaws/{id}/package_versions/{id})."
+            ),
+        )(tools_write.flaw_package_version_delete)
 
         mcp.tool(
             name="affects_bulk_create",

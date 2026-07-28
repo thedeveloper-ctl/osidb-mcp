@@ -1429,6 +1429,9 @@ def flaw_package_version_add(
 ) -> dict[str, Any]:
     """Add package version info to a flaw (POST /osidb/api/v1/flaws/{id}/package_versions).
 
+    All versions listed are implicitly 'fixed_in' (unaffected) versions per the
+    OSIDB data model (maps to Bugzilla fixed_in field).
+
     Args:
         flaw_id: Flaw UUID (required).
         package: Package name (required).
@@ -1469,6 +1472,96 @@ def flaw_package_version_add(
         if r.parsed is None:
             return {"ok": False, "error": "empty_response", "status_code": int(r.status_code)}
         return {"ok": True, "package_version": to_jsonable(r.parsed.to_dict())}
+    except Exception as exc:
+        return _error_response(exc)
+
+
+# ---------------------------------------------------------------------------
+# flaw_package_version_update
+# ---------------------------------------------------------------------------
+
+def flaw_package_version_update(
+    flaw_id: str,
+    package_version_id: str,
+    package: str,
+    versions: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Update a package version entry on a flaw (PUT /osidb/api/v1/flaws/{id}/package_versions/{id}).
+
+    Replaces the versions list entirely. Use to correct or overwrite previously
+    added version entries.
+
+    Args:
+        flaw_id: Flaw UUID (required).
+        package_version_id: UUID of the package_version entry to update (required).
+        package: Package name (required).
+        versions: List of version dicts, each with ``version`` (str).
+    """
+    from osidb_bindings.bindings.python_client.models.flaw_package_version_put_request import (
+        FlawPackageVersionPutRequest,
+    )
+    from osidb_bindings.bindings.python_client.models.flaw_version_request import (
+        FlawVersionRequest,
+    )
+
+    try:
+        flaw_uuid = UUID(str(flaw_id).strip())
+    except ValueError:
+        return {"ok": False, "error": "bad_request", "detail": "flaw_id must be a UUID"}
+
+    try:
+        pv_uuid = UUID(str(package_version_id).strip())
+    except ValueError:
+        return {"ok": False, "error": "bad_request", "detail": "package_version_id must be a UUID"}
+
+    session = get_session()
+
+    try:
+        pv = session.flaws.package_versions.retrieve(str(flaw_uuid), str(pv_uuid))
+        updated_dt = getattr(pv, "updated_dt", None)
+        embargoed = getattr(pv, "embargoed", False)
+    except Exception as exc:
+        return _error_response(exc)
+
+    version_objs = [FlawVersionRequest(**v) for v in versions]
+    body = FlawPackageVersionPutRequest(
+        package=package, versions=version_objs, embargoed=embargoed,
+        updated_dt=updated_dt,
+    )
+
+    try:
+        client = session.get_client_with_new_access_token()
+        from osidb_bindings.bindings.python_client.api.osidb import (
+            osidb_api_v1_flaws_package_versions_update,
+        )
+        r = osidb_api_v1_flaws_package_versions_update.sync_detailed(
+            flaw_uuid, pv_uuid, client=client, body=body,
+        )
+        if r.parsed is None:
+            return {"ok": False, "error": "empty_response", "status_code": int(r.status_code)}
+        return {"ok": True, "package_version": to_jsonable(r.parsed.to_dict())}
+    except Exception as exc:
+        return _error_response(exc)
+
+
+# ---------------------------------------------------------------------------
+# flaw_package_version_delete
+# ---------------------------------------------------------------------------
+
+def flaw_package_version_delete(
+    flaw_id: str,
+    package_version_id: str,
+) -> dict[str, Any]:
+    """Delete a package version entry from a flaw (DELETE /osidb/api/v1/flaws/{id}/package_versions/{id}).
+
+    Args:
+        flaw_id: Flaw UUID (required).
+        package_version_id: UUID of the package_version entry to delete (required).
+    """
+    session = get_session()
+    try:
+        session.flaws.package_versions.delete(flaw_id, package_version_id)
+        return {"ok": True, "deleted": package_version_id}
     except Exception as exc:
         return _error_response(exc)
 
