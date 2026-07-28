@@ -1604,6 +1604,92 @@ def affects_bulk_update(
         return _error_response(exc)
 
 
+# ---------------------------------------------------------------------------
+# tracker_update
+# ---------------------------------------------------------------------------
+
+def tracker_update(
+    tracker_uuid: str,
+    *,
+    affects: list[str] | None = None,
+    ps_update_stream: str | None = None,
+    sync_to_bz: bool = True,
+) -> dict[str, Any]:
+    """Update a tracker (PUT /osidb/api/v2/trackers/{uuid}).
+
+    Updates tracker metadata. The ``affects`` and ``ps_update_stream`` fields
+    are required by the API schema, so they are auto-fetched from the current
+    tracker state if not provided.
+
+    Args:
+        tracker_uuid: Tracker UUID (required).
+        affects: List of affect UUIDs to attach. If None, keeps current.
+        ps_update_stream: Target update stream. If None, keeps current.
+        sync_to_bz: Sync flaw to Bugzilla after update (default True).
+    """
+    session = get_session()
+    client = session.get_client_with_new_access_token()
+
+    try:
+        current = session.trackers.retrieve(tracker_uuid)
+    except Exception as exc:
+        return _error_response(exc)
+
+    data: dict[str, Any] = {
+        "affects": affects if affects is not None else to_jsonable(getattr(current, "affects", [])),
+        "ps_update_stream": ps_update_stream or getattr(current, "ps_update_stream", ""),
+        "embargoed": getattr(current, "embargoed", False),
+        "updated_dt": to_jsonable(getattr(current, "updated_dt", None)),
+    }
+    if not sync_to_bz:
+        data["sync_to_bz"] = False
+
+    try:
+        resp = requests.put(
+            f"{client.base_url}/osidb/api/v2/trackers/{tracker_uuid}",
+            json=data,
+            headers=client.get_headers(),
+            verify=client.verify_ssl,
+            auth=client.get_auth(),
+            timeout=client.get_timeout(),
+        )
+        resp.raise_for_status()
+        return {"ok": True, "tracker": resp.json()}
+    except Exception as exc:
+        return _error_response(exc)
+
+
+# ---------------------------------------------------------------------------
+# affect_cvss_remove
+# ---------------------------------------------------------------------------
+
+def affect_cvss_remove(
+    affect_id: str,
+    cvss_score_id: str,
+) -> dict[str, Any]:
+    """Delete a CVSS score from an affect (DELETE /osidb/api/v2/affects/{id}/cvss-scores/{id}).
+
+    Args:
+        affect_id: Affect UUID (required).
+        cvss_score_id: CVSS score UUID to delete (required).
+    """
+    session = get_session()
+    client = session.get_client_with_new_access_token()
+
+    try:
+        resp = requests.delete(
+            f"{client.base_url}/osidb/api/v2/affects/{affect_id}/cvss-scores/{cvss_score_id}",
+            headers=client.get_headers(),
+            verify=client.verify_ssl,
+            auth=client.get_auth(),
+            timeout=client.get_timeout(),
+        )
+        resp.raise_for_status()
+        return {"ok": True, "deleted": cvss_score_id}
+    except Exception as exc:
+        return _error_response(exc)
+
+
 def affects_bulk_delete(
     affect_uuids: list[str],
 ) -> dict[str, Any]:

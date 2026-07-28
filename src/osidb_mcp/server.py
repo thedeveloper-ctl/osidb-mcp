@@ -633,4 +633,38 @@ def create_server(settings: Settings) -> FastMCP:
             ),
         )(tools_workflow.flaw_revert)
 
+        mcp.tool(
+            name="tracker_update",
+            description=(
+                "Update a tracker (PUT /osidb/api/v2/trackers/{uuid}). "
+                "Updates tracker metadata such as linked affects or update stream. "
+                "Auto-fetches current state for optimistic concurrency."
+            ),
+        )(tools_write.tracker_update)
+
+        mcp.tool(
+            name="affect_cvss_remove",
+            description=(
+                "Delete a CVSS score from an affect "
+                "(DELETE /osidb/api/v2/affects/{id}/cvss-scores/{id})."
+            ),
+        )(tools_write.affect_cvss_remove)
+
+        mcp.tool(
+            name="audit_list",
+            description=(
+                "List audit trail events (GET /osidb/api/v1/audit). "
+                "Paginated change history. Filter by pgh_obj_id (object UUID), "
+                "pgh_obj_model (e.g. 'osidb.Flaw'), pgh_label, or pgh_created_at."
+            ),
+        )(tools_read.audit_list)
+
+        mcp.tool(
+            name="audit_get",
+            description=(
+                "Retrieve a single audit event by slug "
+                "(GET /osidb/api/v1/audit/{pgh_slug})."
+            ),
+        )(tools_read.audit_get)
+
     return mcp

@@ -1649,3 +1649,69 @@ def tracker_suggestions(
         if isinstance(exc, requests.RequestException):
             return {"ok": False, **http_error_payload(exc)}
         return {"ok": False, "error": "osidb_error", "detail": str(exc)}
+
+
+# ---------------------------------------------------------------------------
+# audit_list / audit_get
+# ---------------------------------------------------------------------------
+
+def audit_list(
+    *,
+    pgh_obj_id: str | None = None,
+    pgh_obj_model: str | None = None,
+    pgh_label: str | None = None,
+    pgh_created_at: str | None = None,
+    limit: int = DEFAULT_LIST_LIMIT,
+    offset: int = 0,
+) -> dict[str, Any]:
+    """List audit trail events (GET /osidb/api/v1/audit).
+
+    Paginated list of change events. Filter by object ID, model, label, or time.
+
+    Args:
+        pgh_obj_id: Primary key of the object to filter events for.
+        pgh_obj_model: Model name (e.g. "osidb.Flaw", "osidb.Affect").
+        pgh_label: Event label to filter on.
+        pgh_created_at: ISO datetime to filter by creation time.
+        limit: Page size (default 50).
+        offset: Pagination offset.
+    """
+    try:
+        kw: dict[str, Any] = {}
+        if pgh_obj_id:
+            kw["pgh_obj_id"] = pgh_obj_id
+        if pgh_obj_model:
+            kw["pgh_obj_model"] = pgh_obj_model
+        if pgh_label:
+            kw["pgh_label"] = pgh_label
+        if pgh_created_at:
+            kw["pgh_created_at"] = pgh_created_at
+        kw["limit"] = clamp_limit(limit)
+        kw["offset"] = clamp_offset(offset)
+        return _raw_api_call(
+            "osidb_bindings.bindings.python_client.api.osidb.osidb_api_v1_audit_list",
+            **kw,
+        )
+    except (requests.RequestException, ValueError) as e:
+        if isinstance(e, ValueError):
+            return {"ok": False, "error": "bad_request", "detail": str(e)}
+        return {"ok": False, **http_error_payload(e)}
+
+
+def audit_get(
+    pgh_slug: str,
+) -> dict[str, Any]:
+    """Retrieve a single audit event (GET /osidb/api/v1/audit/{pgh_slug}).
+
+    Args:
+        pgh_slug: Unique identifier of the audit event.
+    """
+    try:
+        return _raw_api_call(
+            "osidb_bindings.bindings.python_client.api.osidb.osidb_api_v1_audit_retrieve",
+            pgh_slug,
+        )
+    except (requests.RequestException, ValueError) as e:
+        if isinstance(e, ValueError):
+            return {"ok": False, "error": "bad_request", "detail": str(e)}
+        return {"ok": False, **http_error_payload(e)}
