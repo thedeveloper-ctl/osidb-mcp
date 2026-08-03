@@ -53,7 +53,10 @@ def create_server(settings: Settings) -> FastMCP:
         description=(
             "Search CVEs/flaws by keyword, CVE id(s), severity (impact), changed date range, "
             "PS product modules or components, workflow, major incident state, embargo, and owner. "
-            "Keyword-only queries use OSIDB full-text search; structured filters use list APIs."
+            "Keyword-only queries use OSIDB full-text search; structured filters use list APIs. "
+            "Also supports ``query`` parameter for OSIM-compatible filter expressions using operators: "
+            "``=`` (equals), ``!=`` (not equals), ``~`` (contains), ``and``, ``or``, ``()`` (grouping). "
+            "Empty string matching with ``field = \"\"``."
         ),
     )(tools_read.search_flaws)
     mcp.tool(
@@ -77,13 +80,19 @@ def create_server(settings: Settings) -> FastMCP:
         description=(
             "List flaws with filters: components, affects (ps_module/ps_component/ps_update_stream), "
             "workflow_state, impact, owner_isempty, embargoed, dates, etc. "
+            "Supports ``query`` parameter for OSIM-compatible filter expressions with operators: "
+            "``=`` (equals), ``!=`` (not equals), ``~`` (contains), ``and``, ``or``, and ``()`` for grouping. "
+            "Fields usable in query: workflow_state, impact, owner, title, cve_id, embargoed, source, etc. "
             "Optional ``extra_query`` must use OSIDB v2 list query keys (allowlisted). "
             "limit is capped at 100. Successful responses include ``identifier_hint`` for CVE vs uuid handling."
         ),
     )(tools_read.flaws_list)
     mcp.tool(
         name="flaws_count",
-        description="Count flaws matching the same filters as flaws_list (no result bodies).",
+        description=(
+            "Count flaws matching the same filters as flaws_list (no result bodies). "
+            "Supports ``query`` parameter for OSIM-compatible filter expressions."
+        ),
     )(tools_read.flaws_count)
     mcp.tool(
         name="flaws_search",

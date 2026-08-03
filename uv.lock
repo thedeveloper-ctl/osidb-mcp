@@ -1038,7 +1038,7 @@ wheels = [
 
 [[package]]
 name = "osidb-bindings"
-version = "5.11.0"
+version = "5.13.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
@@ -1047,9 +1047,9 @@ dependencies = [
     { name = "requests" },
     { name = "requests-gssapi" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/c7/16/50cdf15b4143c58dbb615e68adff248a1068ac293f63721f1950c486445c/osidb_bindings-5.11.0.tar.gz", hash = "sha256:fe1e57504ecbb00f5a2b66cdb16a9e7ffce95c50dfb615752d6a637181ba67e3", size = 323415, upload-time = "2026-06-02T08:27:20.248Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/ea/b2/c783b487c9d33d242993727f3ee11cf5c8c964dede4465f3fb704b7f34fa/osidb_bindings-5.13.0.tar.gz", hash = "sha256:1df96df59f71a53d2f7f2bb09d38103f84b8ae3ad3c1ab4988cf3d94afb7cc2e", size = 333128, upload-time = "2026-08-03T08:11:25.998Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/a7/35/21ab39b511d72ffe276738d7697d407c42b845955abca883497c6bd4de95/osidb_bindings-5.11.0-py3-none-any.whl", hash = "sha256:3754c25fd472ca1968686304651a83f76be60cbe965cb00d009d6c27cde2da8c", size = 796080, upload-time = "2026-06-02T08:27:19.017Z" },
+    { url = "https://files.pythonhosted.org/packages/49/bf/9d65b4db1be75aed58c337c14cb0bab759d485067382162c8c6c0c9c164e/osidb_bindings-5.13.0-py3-none-any.whl", hash = "sha256:847fd986c27a1dbbf3ab8496accb49fead256db068cdc8814faac2c0d537307b", size = 826966, upload-time = "2026-08-03T08:11:24.494Z" },
 ]
 
 [[package]]
@@ -1059,22 +1059,30 @@ source = { editable = "." }
 dependencies = [
     { name = "mcp" },
     { name = "osidb-bindings" },
+    { name = "requests-gssapi" },
 ]
 
 [package.optional-dependencies]
 dev = [
     { name = "pip-audit" },
     { name = "pytest" },
+    { name = "python-dotenv" },
+]
+dotenv = [
+    { name = "python-dotenv" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "mcp", specifier = ">=1.0,<2" },
-    { name = "osidb-bindings", specifier = ">=5.11.0,<6" },
+    { name = "osidb-bindings", specifier = ">=5.12.0,<6" },
     { name = "pip-audit", marker = "extra == 'dev'", specifier = ">=2.7" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
+    { name = "python-dotenv", marker = "extra == 'dev'", specifier = ">=1.0" },
+    { name = "python-dotenv", marker = "extra == 'dotenv'", specifier = ">=1.0" },
+    { name = "requests-gssapi", specifier = ">=1.3" },
 ]
-provides-extras = ["dev"]
+provides-extras = ["dotenv", "dev"]
 
 [[package]]
 name = "packageurl-python"

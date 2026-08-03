@@ -14,9 +14,6 @@ from osidb_bindings.bindings.python_client.models.osidb_api_v2_affects_list_flaw
 from osidb_bindings.bindings.python_client.models.osidb_api_v2_affects_list_flaw_impact_in_item import (
     OsidbApiV2AffectsListFlawImpactInItem,
 )
-from osidb_bindings.bindings.python_client.models.osidb_api_v2_affects_list_flaw_workflow_state_item import (
-    OsidbApiV2AffectsListFlawWorkflowStateItem,
-)
 from osidb_bindings.bindings.python_client.models.osidb_api_v2_flaws_list_impact import (
     OsidbApiV2FlawsListImpact,
 )
@@ -34,9 +31,6 @@ from osidb_bindings.bindings.python_client.models.osidb_api_v2_flaws_list_source
 )
 from osidb_bindings.bindings.python_client.models.osidb_api_v2_flaws_list_source_in_item import (
     OsidbApiV2FlawsListSourceInItem,
-)
-from osidb_bindings.bindings.python_client.models.osidb_api_v2_flaws_list_workflow_state_item import (
-    OsidbApiV2FlawsListWorkflowStateItem,
 )
 
 from osidb_mcp.errors import http_error_payload
@@ -111,10 +105,10 @@ def _impact_in(values: list[str] | None) -> list[OsidbApiV2FlawsListImpactInItem
 
 def _workflow_in(
     values: list[str] | None,
-) -> list[OsidbApiV2FlawsListWorkflowStateItem] | None:
+) -> list[str] | None:
     if not values:
         return None
-    return [OsidbApiV2FlawsListWorkflowStateItem(v) for v in values]
+    return values
 
 
 def osidb_status() -> dict[str, Any]:
@@ -265,6 +259,7 @@ def _build_flaws_kwargs(
 
 def flaws_list(
     *,
+    query: str | None = None,
     search: str | None = None,
     embargoed: bool | None = None,
     components: list[str] | None = None,
@@ -298,6 +293,8 @@ def flaws_list(
 ) -> dict[str, Any]:
     lim = clamp_limit(limit)
     off = clamp_offset(offset)
+    if query:
+        extra_query = {**(extra_query or {}), "query": query}
     try:
         base = _build_flaws_kwargs(
             search=search,
@@ -353,6 +350,7 @@ def flaws_list(
 
 def flaws_count(
     *,
+    query: str | None = None,
     search: str | None = None,
     embargoed: bool | None = None,
     components: list[str] | None = None,
@@ -380,6 +378,8 @@ def flaws_count(
     api_version: str | None = None,
     extra_query: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    if query:
+        extra_query = {**(extra_query or {}), "query": query}
     try:
         base = _build_flaws_kwargs(
             search=search,
@@ -459,10 +459,10 @@ def _affects_impact_in(
 
 def _affects_workflow_in(
     values: list[str] | None,
-) -> list[OsidbApiV2AffectsListFlawWorkflowStateItem] | None:
+) -> list[str] | None:
     if not values:
         return None
-    return [OsidbApiV2AffectsListFlawWorkflowStateItem(v) for v in values]
+    return values
 
 
 def affects_list(
@@ -1266,15 +1266,15 @@ def workflow_get(
 # --- High-level capability tools (triage-style search / rollups) ---
 
 _IMPACTS_ORDER = ("CRITICAL", "IMPORTANT", "MODERATE", "LOW")
-_WORKFLOW_STATES_SUMMARY = tuple(
-    str(x.value)
-    for x in OsidbApiV2FlawsListWorkflowStateItem
-    if x.value
+_WORKFLOW_STATES_SUMMARY = (
+    "NEW", "TRIAGE", "ANALYSIS",
+    "PRE_SECONDARY_ASSESSMENT", "SECONDARY_ASSESSMENT", "DONE",
 )
 
 
 def search_flaws(
     *,
+    query: str | None = None,
     keyword: str | None = None,
     cve_ids: list[str] | None = None,
     severity: str | None = None,
@@ -1300,6 +1300,7 @@ def search_flaws(
     keyword = (keyword or "").strip() or None
     has_structured = any(
         [
+            query,
             cve_ids,
             severity,
             severities,
@@ -1326,6 +1327,7 @@ def search_flaws(
         impact = severity
 
     return flaws_list(
+        query=query,
         search=keyword,
         cve_id_in=cve_ids,
         impact=impact,
