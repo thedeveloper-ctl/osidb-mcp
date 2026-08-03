@@ -40,6 +40,7 @@ DEFAULT_LIST_LIMIT = 50
 
 
 def parse_dt(value: str) -> datetime.datetime:
+    """Parse an ISO 8601 datetime string, accepting trailing ``Z``."""
     s = value.strip()
     if s.endswith("Z"):
         s = s[:-1] + "+00:00"
@@ -47,6 +48,7 @@ def parse_dt(value: str) -> datetime.datetime:
 
 
 def parse_date(value: str) -> datetime.date:
+    """Parse an ISO 8601 date (or datetime) string into a date."""
     s = value.strip()
     if "T" in s or s.endswith("Z"):
         return parse_dt(s).date()
@@ -78,14 +80,12 @@ def _coerce_extra_value(value: Any, expected_type: type[Any] | None = None) -> A
             )
         item_type = None
         if expected_type is not None and get_origin(expected_type) is list:
-            item_args = get_args(expected_type)
-            if item_args:
-                item_type = item_args[0]
+            args = get_args(expected_type)
+            if args:
+                item_type = args[0]
         out = []
         for item in value:
-            if not isinstance(item, (str, int, float, bool)):
-                raise ValueError("extra_query list items must be primitives")
-            out.append(_coerce_extra_value(item, item_type))
+            out.append(_coerce_extra_value(item, expected_type=item_type))
         return out
     raise ValueError("extra_query values must be primitives or lists of primitives")
 
@@ -95,7 +95,7 @@ def merge_extra_query(
     extra: dict[str, Any] | None,
     *,
     allowlist: frozenset[str],
-    param_types: dict[str, Any] | None = None,
+    param_types: dict[str, type[Any]] | None = None,
 ) -> dict[str, Any]:
     if not extra:
         return base
@@ -108,7 +108,7 @@ def merge_extra_query(
         if key not in allowlist:
             raise ValueError(f"extra_query key not allowed: {key!r}")
         expected = param_types.get(key) if param_types else None
-        merged[key] = _coerce_extra_value(raw, expected)
+        merged[key] = _coerce_extra_value(raw, expected_type=expected)
     return merged
 
 

@@ -338,7 +338,8 @@ def create_server(settings: Settings) -> FastMCP:
                 "Update fields on an existing OSIDB flaw (PUT /osidb/api/v2/flaws/{id}). "
                 "Auto-fetches the current flaw to obtain ``updated_dt`` for optimistic concurrency. "
                 "Only the fields you provide are changed; all others keep their current values. "
-                "Supports ``owner`` assignment (Jira username for workflow prerequisites)."
+                "Supports ``owner`` assignment, ``major_incident_state``, ``aegis_meta`` "
+                "(AI change tracking), and ``create_jira_task`` (creates a Jira task if none exists)."
             ),
         )(tools_write.flaw_update)
 
@@ -487,11 +488,25 @@ def create_server(settings: Settings) -> FastMCP:
         mcp.tool(
             name="flaw_label_add",
             description=(
-                "Add a collaborator label to a flaw "
+                "Add a label to a flaw "
                 "(POST /osidb/api/v1/flaws/{id}/labels). "
-                "Requires flaw UUID. Optional state (NEW, REQ, DONE, SKIP), contributor, label_type."
+                "Requires flaw UUID. Optional state (NEW, REQ, DONE, SKIP), contributor, "
+                "label_type (alias, context_based, workflow, bu), relevant (bool). "
+                "To reach DONE workflow state on OSIDB >= 5.12, add a label named "
+                "'approved' with label_type='workflow'."
             ),
         )(tools_write.flaw_label_add)
+
+        mcp.tool(
+            name="flaw_label_update",
+            description=(
+                "Update a label on a flaw "
+                "(PUT /osidb/api/v1/flaws/{id}/labels/{id}). "
+                "Auto-fetches current label for optimistic concurrency. "
+                "Supports changing state (NEW, REQ, DONE, SKIP), contributor, "
+                "label_type (alias, context_based, workflow, bu), relevant (bool)."
+            ),
+        )(tools_write.flaw_label_update)
 
         mcp.tool(
             name="flaw_label_remove",
@@ -607,38 +622,37 @@ def create_server(settings: Settings) -> FastMCP:
         mcp.tool(
             name="flaw_promote",
             description=(
-                "Promote a flaw to the next workflow state "
-                "(POST /osidb/api/{version}/flaws/{id}/promote). "
-                "States: NEW -> TRIAGE -> PRE_SECONDARY_ASSESSMENT -> "
-                "SECONDARY_ASSESSMENT -> DONE. Returns 400 if prerequisites are not met."
+                "[DEPRECATED] Promote endpoint is a no-op on OSIDB >= 5.12. "
+                "Workflow state is now classified automatically based on flaw data. "
+                "To advance a flaw, fill in required fields via flaw_update / affect_add / "
+                "tracker_create, then add a workflow label named 'approved' via "
+                "flaw_label_add to reach DONE."
             ),
         )(tools_workflow.flaw_promote)
 
         mcp.tool(
             name="flaw_reject",
             description=(
-                "Reject a flaw, moving it to REJECTED state "
-                "(POST /osidb/api/{version}/flaws/{id}/reject). "
-                "Requires a reason. Only from NEW or TRIAGE states."
+                "[DEPRECATED] Reject endpoint is a no-op on OSIDB >= 5.12; "
+                "the reason argument is ignored. Rejection is now handled automatically "
+                "via workflow classification or by adding a label named 'rejected' "
+                "with type 'workflow'."
             ),
         )(tools_workflow.flaw_reject)
 
         mcp.tool(
             name="flaw_reset",
             description=(
-                "Reset a flaw back to NEW state "
-                "(POST /osidb/api/{version}/flaws/{id}/reset). "
-                "Can be called from NEW, TRIAGE, or DONE states."
+                "[DEPRECATED] Reset endpoint is a no-op on OSIDB >= 5.12. "
+                "Workflow classification is now automatic and cannot be manually reset."
             ),
         )(tools_workflow.flaw_reset)
 
         mcp.tool(
             name="flaw_revert",
             description=(
-                "Revert a flaw to its previous workflow state "
-                "(POST /osidb/api/{version}/flaws/{id}/revert). "
-                "Moves one step backward: DONE -> SECONDARY_ASSESSMENT -> "
-                "PRE_SECONDARY_ASSESSMENT -> TRIAGE -> NEW."
+                "[DEPRECATED] Revert endpoint is a no-op on OSIDB >= 5.12. "
+                "Workflow classification is now automatic and cannot be manually reverted."
             ),
         )(tools_workflow.flaw_revert)
 

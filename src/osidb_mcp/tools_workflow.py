@@ -1,4 +1,12 @@
-"""MCP tool implementations for OSIDB flaw workflow state transitions."""
+"""MCP tool implementations for OSIDB flaw workflow state transitions.
+
+DEPRECATION NOTICE (OSIDB >= 5.12):
+Workflow state is now classified automatically by OSIDB based on flaw data
+completeness.  The promote/reject/reset/revert endpoints are retained for
+backward compatibility but are no-ops on modern servers.  To advance a flaw
+through the workflow, update its data (flaw_update, affect_add, tracker_create)
+and add a workflow label named ``approved`` via flaw_label_add to reach DONE.
+"""
 
 from __future__ import annotations
 
@@ -10,6 +18,13 @@ from osidb_mcp.errors import http_error_payload
 from osidb_mcp.serialize import to_jsonable
 from osidb_mcp.session_holder import get_session
 
+_DEPRECATION_MSG = (
+    "This endpoint is deprecated on OSIDB >= 5.12. Workflow state is now "
+    "classified automatically based on flaw data completeness. To advance "
+    "a flaw, update its fields (flaw_update / affect_add / tracker_create) "
+    "and add a workflow label named 'approved' via flaw_label_add to reach DONE."
+)
+
 
 def _error_response(exc: BaseException) -> dict[str, Any]:
     if isinstance(exc, requests.RequestException):
@@ -17,85 +32,91 @@ def _error_response(exc: BaseException) -> dict[str, Any]:
     return {"ok": False, "error": "osidb_error", "detail": str(exc)}
 
 
+def _inject_deprecation(result: dict[str, Any]) -> dict[str, Any]:
+    result["deprecated"] = True
+    result["deprecation_message"] = _DEPRECATION_MSG
+    return result
+
+
 def flaw_promote(flaw_id: str) -> dict[str, Any]:
-    """Promote a flaw to the next workflow state.
+    """[DEPRECATED] Promote a flaw to the next workflow state.
 
-    Advances the flaw one step forward in the workflow:
-    NEW -> TRIAGE -> PRE_SECONDARY_ASSESSMENT -> SECONDARY_ASSESSMENT -> DONE.
-
-    Each transition has prerequisites (e.g. owner assigned, title set,
-    trackers filed). OSIDB returns 400 if requirements are not met.
+    On OSIDB >= 5.12 this endpoint is a no-op.  Workflow classification is
+    now automatic based on flaw data completeness.  To advance a flaw,
+    populate required fields via flaw_update / affect_add / tracker_create,
+    then add a workflow label named 'approved' via flaw_label_add to reach DONE.
 
     Args:
         flaw_id: Flaw CVE id or internal UUID (required).
 
     Returns:
-        JSON dict with ``ok``, ``classification`` (new workflow state info).
+        JSON dict with ``ok``, ``classification``, ``deprecated``, ``deprecation_message``.
     """
     session = get_session()
     try:
         result = session.flaws.promote(flaw_id)
-        return {"ok": True, "classification": to_jsonable(result)}
+        return _inject_deprecation({"ok": True, "classification": to_jsonable(result)})
     except Exception as exc:
         return _error_response(exc)
 
 
 def flaw_reject(flaw_id: str, reason: str) -> dict[str, Any]:
-    """Reject a flaw (move to REJECTED state).
+    """[DEPRECATED] Reject a flaw.
 
-    Only flaws in NEW or TRIAGE state can be rejected.
+    On OSIDB >= 5.12 this endpoint is a no-op; the reason argument is ignored.
+    Rejection is now handled automatically via workflow classification or by
+    adding a label named 'rejected' with type 'workflow'.
 
     Args:
         flaw_id: Flaw CVE id or internal UUID (required).
-        reason: Explanation for the rejection (required).
+        reason: Explanation for the rejection (ignored on modern OSIDB).
 
     Returns:
-        JSON dict with ``ok``, ``classification`` (new workflow state info).
+        JSON dict with ``ok``, ``classification``, ``deprecated``, ``deprecation_message``.
     """
     session = get_session()
     try:
         result = session.flaws.reject(flaw_id, {"reason": reason})
-        return {"ok": True, "classification": to_jsonable(result)}
+        return _inject_deprecation({"ok": True, "classification": to_jsonable(result)})
     except Exception as exc:
         return _error_response(exc)
 
 
 def flaw_reset(flaw_id: str) -> dict[str, Any]:
-    """Reset a flaw back to NEW state.
+    """[DEPRECATED] Reset a flaw workflow state.
 
-    Can be called from NEW, TRIAGE, or DONE states.
+    On OSIDB >= 5.12 this endpoint is a no-op.  Workflow classification is
+    now automatic and cannot be manually reset.
 
     Args:
         flaw_id: Flaw CVE id or internal UUID (required).
 
     Returns:
-        JSON dict with ``ok``, ``classification`` (new workflow state info).
+        JSON dict with ``ok``, ``classification``, ``deprecated``, ``deprecation_message``.
     """
     session = get_session()
     try:
         result = session.flaws.reset(flaw_id)
-        return {"ok": True, "classification": to_jsonable(result)}
+        return _inject_deprecation({"ok": True, "classification": to_jsonable(result)})
     except Exception as exc:
         return _error_response(exc)
 
 
 def flaw_revert(flaw_id: str) -> dict[str, Any]:
-    """Revert a flaw to the previous workflow state.
+    """[DEPRECATED] Revert a flaw to the previous workflow state.
 
-    Moves the flaw one step backward:
-    DONE -> SECONDARY_ASSESSMENT -> PRE_SECONDARY_ASSESSMENT -> TRIAGE -> NEW.
-
-    Cannot revert from NEW (already initial state).
+    On OSIDB >= 5.12 this endpoint is a no-op.  Workflow classification is
+    now automatic and cannot be manually reverted.
 
     Args:
         flaw_id: Flaw CVE id or internal UUID (required).
 
     Returns:
-        JSON dict with ``ok``, ``classification`` (new workflow state info).
+        JSON dict with ``ok``, ``classification``, ``deprecated``, ``deprecation_message``.
     """
     session = get_session()
     try:
         result = session.flaws.revert(flaw_id)
-        return {"ok": True, "classification": to_jsonable(result)}
+        return _inject_deprecation({"ok": True, "classification": to_jsonable(result)})
     except Exception as exc:
         return _error_response(exc)

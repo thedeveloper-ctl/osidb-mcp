@@ -54,10 +54,6 @@ from osidb_mcp.query_filters import (
 from osidb_mcp.serialize import paginated_summary, to_jsonable
 from osidb_mcp.session_holder import get_session
 
-_trackers_list = importlib.import_module(
-    "osidb_bindings.bindings.python_client.api.osidb.osidb_api_v2_trackers_list"
-)
-
 # Shown on flaw list/search responses so agents keep the stable OSIDB id when cve_id is empty.
 _FLAW_LIST_IDENTITY_HINT = (
     "Each flaw has `uuid` (internal OSIDB id). When `cve_id` is null or empty, use that `uuid` "
@@ -180,6 +176,8 @@ def _build_flaws_kwargs(
     affects_ps_update_stream_in: list[str] | None,
     workflow_state: list[str] | None,
     workflow_state_in: list[str] | None,
+    workflow_name: str | None,
+    workflow_name_in: list[str] | None,
     impact: str | None,
     impact_in: list[str] | None,
     owner: str | None,
@@ -222,6 +220,10 @@ def _build_flaws_kwargs(
         kw["workflow_state"] = _workflow_in(workflow_state)
     if workflow_state_in:
         kw["workflow_state__in"] = _workflow_in(workflow_state_in)
+    if workflow_name:
+        kw["workflow_name"] = workflow_name
+    if workflow_name_in:
+        kw["workflow_name__in"] = workflow_name_in
     if impact:
         kw["impact"] = OsidbApiV2FlawsListImpact(impact)
     if impact_in:
@@ -272,6 +274,8 @@ def flaws_list(
     affects_ps_update_stream_in: list[str] | None = None,
     workflow_state: list[str] | None = None,
     workflow_state_in: list[str] | None = None,
+    workflow_name: str | None = None,
+    workflow_name_in: list[str] | None = None,
     impact: str | None = None,
     impact_in: list[str] | None = None,
     owner: str | None = None,
@@ -309,6 +313,8 @@ def flaws_list(
             affects_ps_update_stream_in=affects_ps_update_stream_in,
             workflow_state=workflow_state,
             workflow_state_in=workflow_state_in,
+            workflow_name=workflow_name,
+            workflow_name_in=workflow_name_in,
             impact=impact,
             impact_in=impact_in,
             owner=owner,
@@ -363,6 +369,8 @@ def flaws_count(
     affects_ps_update_stream_in: list[str] | None = None,
     workflow_state: list[str] | None = None,
     workflow_state_in: list[str] | None = None,
+    workflow_name: str | None = None,
+    workflow_name_in: list[str] | None = None,
     impact: str | None = None,
     impact_in: list[str] | None = None,
     owner: str | None = None,
@@ -394,6 +402,8 @@ def flaws_count(
             affects_ps_update_stream_in=affects_ps_update_stream_in,
             workflow_state=workflow_state,
             workflow_state_in=workflow_state_in,
+            workflow_name=workflow_name,
+            workflow_name_in=workflow_name_in,
             impact=impact,
             impact_in=impact_in,
             owner=owner,
@@ -479,6 +489,8 @@ def affects_list(
     flaw_uuid_in: list[str] | None = None,
     flaw_workflow_state: list[str] | None = None,
     flaw_workflow_state_in: list[str] | None = None,
+    flaw_workflow_name: str | None = None,
+    flaw_workflow_name_in: list[str] | None = None,
     flaw_impact: str | None = None,
     flaw_impact_in: list[str] | None = None,
     flaw_components: list[str] | None = None,
@@ -523,6 +535,10 @@ def affects_list(
             kw["flaw__workflow_state__in"] = _affects_workflow_in(
                 flaw_workflow_state_in
             )
+        if flaw_workflow_name:
+            kw["flaw__workflow_name"] = flaw_workflow_name
+        if flaw_workflow_name_in:
+            kw["flaw__workflow_name__in"] = flaw_workflow_name_in
         if flaw_impact:
             kw["flaw__impact"] = OsidbApiV2AffectsListFlawImpact(flaw_impact)
         if flaw_impact_in:
@@ -1269,6 +1285,7 @@ _IMPACTS_ORDER = ("CRITICAL", "IMPORTANT", "MODERATE", "LOW")
 _WORKFLOW_STATES_SUMMARY = (
     "NEW", "TRIAGE", "ANALYSIS",
     "PRE_SECONDARY_ASSESSMENT", "SECONDARY_ASSESSMENT", "DONE",
+    "REJECTED",
 )
 
 
@@ -1284,6 +1301,8 @@ def search_flaws(
     product_modules: list[str] | None = None,
     product_components: list[str] | None = None,
     workflow_state_in: list[str] | None = None,
+    workflow_name: str | None = None,
+    workflow_name_in: list[str] | None = None,
     major_incident_state: str | None = None,
     major_incident_state_in: list[str] | None = None,
     embargoed: bool | None = None,
@@ -1295,7 +1314,7 @@ def search_flaws(
 ) -> dict[str, Any]:
     """
     Search flaws by CVE id(s), severity (impact), date range (changed_after/before),
-    product hints (PS modules / component names), and/or free-text keyword.
+    product hints (PS modules / component names), workflow name, and/or free-text keyword.
     """
     keyword = (keyword or "").strip() or None
     has_structured = any(
@@ -1309,6 +1328,8 @@ def search_flaws(
             product_modules,
             product_components,
             workflow_state_in,
+            workflow_name,
+            workflow_name_in,
             major_incident_state,
             major_incident_state_in,
             embargoed is not None,
@@ -1337,6 +1358,8 @@ def search_flaws(
         affects_ps_module_in=product_modules,
         affects_ps_component_in=product_components,
         workflow_state_in=workflow_state_in,
+        workflow_name=workflow_name,
+        workflow_name_in=workflow_name_in,
         major_incident_state=major_incident_state,
         major_incident_state_in=major_incident_state_in,
         embargoed=embargoed,
