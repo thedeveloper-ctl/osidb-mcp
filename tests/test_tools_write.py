@@ -255,6 +255,8 @@ def _mock_flaw_full(**overrides):
         "unembargo_dt": None,
         "mitigation": "",
         "owner": None,
+        "major_incident_state": None,
+        "nist_cvss_validation": None,
         "updated_dt": "2026-06-08T12:00:00Z",
     }
     defaults.update(overrides)
@@ -265,18 +267,29 @@ def _mock_flaw_full(**overrides):
     return flaw
 
 
+@patch("osidb_mcp.tools_write.requests.put")
 @patch("osidb_mcp.tools_write.get_session")
-def test_flaw_update_single_field(mock_get_session: MagicMock) -> None:
+def test_flaw_update_single_field(mock_get_session: MagicMock, mock_put: MagicMock) -> None:
     session = mock_get_session.return_value
     current = _mock_flaw_full()
     session.flaws.retrieve.return_value = current
-    session.flaws.update.return_value = _mock_flaw_full(impact="IMPORTANT")
+    client = session.get_client_with_new_access_token.return_value
+    client.base_url = "https://osidb.example.com"
+    client.get_headers.return_value = {"Authorization": "Bearer tok"}
+    client.verify_ssl = True
+    client.get_auth.return_value = None
+    client.get_timeout.return_value = 300.0
+
+    put_resp = MagicMock()
+    put_resp.raise_for_status.return_value = None
+    put_resp.json.return_value = {"uuid": "aaa58a80-dd9c-43dd-ba19-61fa88a66714", "impact": "IMPORTANT"}
+    mock_put.return_value = put_resp
 
     result = flaw_update(flaw_id="aaa58a80-dd9c-43dd-ba19-61fa88a66714", impact="IMPORTANT")
 
     assert result["ok"] is True
-    session.flaws.update.assert_called_once()
-    update_data = session.flaws.update.call_args[0][1]
+    mock_put.assert_called_once()
+    update_data = mock_put.call_args[1]["json"]
     assert update_data["impact"] == "IMPORTANT"
     assert update_data["title"] == "Original title"
     assert update_data["updated_dt"] == "2026-06-08T12:00:00Z"
@@ -292,14 +305,23 @@ def test_flaw_update_retrieve_fails(mock_get_session: MagicMock) -> None:
     assert result["ok"] is False
 
 
+@patch("osidb_mcp.tools_write.requests.put")
 @patch("osidb_mcp.tools_write.get_session")
-def test_flaw_update_put_fails(mock_get_session: MagicMock) -> None:
+def test_flaw_update_put_fails(mock_get_session: MagicMock, mock_put: MagicMock) -> None:
     session = mock_get_session.return_value
     session.flaws.retrieve.return_value = _mock_flaw_full()
+    client = session.get_client_with_new_access_token.return_value
+    client.base_url = "https://osidb.example.com"
+    client.get_headers.return_value = {}
+    client.verify_ssl = True
+    client.get_auth.return_value = None
+    client.get_timeout.return_value = 300.0
+
     resp = MagicMock()
     resp.status_code = 409
     resp.text = "Conflict"
-    session.flaws.update.side_effect = requests.HTTPError(response=resp)
+    mock_put.return_value = resp
+    resp.raise_for_status.side_effect = requests.HTTPError(response=resp)
 
     result = flaw_update(flaw_id="aaa58a80-dd9c-43dd-ba19-61fa88a66714", statement="New")
 
@@ -559,6 +581,7 @@ def _mock_affect_full(**overrides):
         "purl": "pkg:rpm/redhat/gstreamer1-plugins-bad-free@1.22.12-7.el9_8?arch=src",
         "delegated_resolution": None,
         "not_affected_justification": "",
+        "subpackage_purls": None,
         "embargoed": True,
         "updated_dt": "2026-06-08T14:00:00Z",
     }
@@ -1511,22 +1534,26 @@ def test_comment_create_internal_jira_error(
 # flaw_label_add / flaw_label_remove tests
 # ---------------------------------------------------------------------------
 
+@patch("osidb_mcp.tools_write.requests.post")
 @patch("osidb_mcp.tools_write.get_session")
-def test_label_add_success(mock_get_session: MagicMock) -> None:
+def test_label_add_success(mock_get_session: MagicMock, mock_post: MagicMock) -> None:
     session = mock_get_session.return_value
-    r = MagicMock()
-    r.status_code = 201
-    parsed = MagicMock()
-    parsed.to_dict.return_value = {"label": "triage", "state": "NEW"}
-    r.parsed = parsed
-    with patch(
-        "osidb_bindings.bindings.python_client.api.osidb.osidb_api_v1_flaws_labels_create.sync_detailed",
-        return_value=r,
-    ):
-        result = flaw_label_add(
-            flaw_id="aaa58a80-dd9c-43dd-ba19-61fa88a66714",
-            label="triage",
-        )
+    client = session.get_client_with_new_access_token.return_value
+    client.base_url = "https://osidb.example.com"
+    client.get_headers.return_value = {"Authorization": "Bearer tok"}
+    client.verify_ssl = True
+    client.get_auth.return_value = None
+    client.get_timeout.return_value = 300.0
+
+    post_resp = MagicMock()
+    post_resp.raise_for_status.return_value = None
+    post_resp.json.return_value = {"label": "triage", "state": "NEW"}
+    mock_post.return_value = post_resp
+
+    result = flaw_label_add(
+        flaw_id="aaa58a80-dd9c-43dd-ba19-61fa88a66714",
+        label="triage",
+    )
 
     assert result["ok"] is True
     assert result["label"]["label"] == "triage"
@@ -1538,19 +1565,25 @@ def test_label_add_invalid_uuid() -> None:
     assert result["error"] == "bad_request"
 
 
+@patch("osidb_mcp.tools_write.requests.delete")
 @patch("osidb_mcp.tools_write.get_session")
-def test_label_remove_success(mock_get_session: MagicMock) -> None:
+def test_label_remove_success(mock_get_session: MagicMock, mock_delete: MagicMock) -> None:
     session = mock_get_session.return_value
-    r = MagicMock()
-    r.status_code = 204
-    with patch(
-        "osidb_bindings.bindings.python_client.api.osidb.osidb_api_v1_flaws_labels_destroy.sync_detailed",
-        return_value=r,
-    ):
-        result = flaw_label_remove(
-            flaw_id="aaa58a80-dd9c-43dd-ba19-61fa88a66714",
-            label_id="label-1",
-        )
+    client = session.get_client_with_new_access_token.return_value
+    client.base_url = "https://osidb.example.com"
+    client.get_headers.return_value = {"Authorization": "Bearer tok"}
+    client.verify_ssl = True
+    client.get_auth.return_value = None
+    client.get_timeout.return_value = 300.0
+
+    delete_resp = MagicMock()
+    delete_resp.raise_for_status.return_value = None
+    mock_delete.return_value = delete_resp
+
+    result = flaw_label_remove(
+        flaw_id="aaa58a80-dd9c-43dd-ba19-61fa88a66714",
+        label_id="label-1",
+    )
 
     assert result["ok"] is True
     assert result["deleted"] == "label-1"

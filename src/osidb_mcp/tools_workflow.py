@@ -13,6 +13,7 @@ from __future__ import annotations
 from typing import Any
 
 import requests
+from osidb_bindings.session import get_sync_function as _get_sync_function
 
 from osidb_mcp.errors import http_error_payload
 from osidb_mcp.serialize import to_jsonable
@@ -76,7 +77,18 @@ def flaw_reject(flaw_id: str, reason: str) -> dict[str, Any]:
     """
     session = get_session()
     try:
-        result = session.flaws.reject(flaw_id, {"reason": reason})
+        # Bypass session.flaws.reject() which raises UndefinedRequestBody
+        # because the OSIDB >= 5.12 bindings no longer define a REQUEST_BODY_TYPE
+        # for the reject endpoint.  Call the low-level binding directly (no body).
+        method_module = session.flaws._get_method_module(
+            resource_name="flaws",
+            method="reject_create",
+        )
+        sync_fn = _get_sync_function(method_module)
+        result = sync_fn(
+            flaw_id,
+            client=session.get_client_with_new_access_token(),
+        )
         return _inject_deprecation({"ok": True, "classification": to_jsonable(result)})
     except Exception as exc:
         return _error_response(exc)

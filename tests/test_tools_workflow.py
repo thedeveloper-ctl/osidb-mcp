@@ -52,10 +52,14 @@ def test_flaw_promote_missing_requirements(mock_get_session: MagicMock) -> None:
 # flaw_reject tests
 # ---------------------------------------------------------------------------
 
+@patch("osidb_mcp.tools_workflow._get_sync_function")
 @patch("osidb_mcp.tools_workflow.get_session")
-def test_flaw_reject_success(mock_get_session: MagicMock) -> None:
+def test_flaw_reject_success(mock_get_session: MagicMock, mock_get_sync: MagicMock) -> None:
     session = mock_get_session.return_value
-    session.flaws.reject.return_value = _classification_response("REJECTED")
+    mock_module = MagicMock()
+    session.flaws._get_method_module.return_value = mock_module
+    mock_sync_fn = MagicMock(return_value=_classification_response("REJECTED"))
+    mock_get_sync.return_value = mock_sync_fn
 
     result = flaw_reject(
         flaw_id="aaa58a80-dd9c-43dd-ba19-61fa88a66714",
@@ -64,19 +68,28 @@ def test_flaw_reject_success(mock_get_session: MagicMock) -> None:
 
     assert result["ok"] is True
     assert result["classification"]["state"] == "REJECTED"
-    session.flaws.reject.assert_called_once_with(
+    session.flaws._get_method_module.assert_called_once_with(
+        resource_name="flaws",
+        method="reject_create",
+    )
+    mock_sync_fn.assert_called_once_with(
         "aaa58a80-dd9c-43dd-ba19-61fa88a66714",
-        {"reason": "Not a valid vulnerability"},
+        client=session.get_client_with_new_access_token(),
     )
 
 
+@patch("osidb_mcp.tools_workflow._get_sync_function")
 @patch("osidb_mcp.tools_workflow.get_session")
-def test_flaw_reject_http_error(mock_get_session: MagicMock) -> None:
+def test_flaw_reject_http_error(mock_get_session: MagicMock, mock_get_sync: MagicMock) -> None:
     session = mock_get_session.return_value
+    mock_module = MagicMock()
+    session.flaws._get_method_module.return_value = mock_module
     resp = MagicMock()
     resp.status_code = 400
     resp.text = '{"detail": "Cannot reject from DONE state"}'
-    session.flaws.reject.side_effect = requests.HTTPError(response=resp)
+    mock_get_sync.return_value = MagicMock(
+        side_effect=requests.HTTPError(response=resp)
+    )
 
     result = flaw_reject(
         flaw_id="aaa58a80-dd9c-43dd-ba19-61fa88a66714",
