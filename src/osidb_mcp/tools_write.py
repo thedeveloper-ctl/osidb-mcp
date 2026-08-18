@@ -93,7 +93,9 @@ def flaw_create(
     reported_dt: str | None = None,
     unembargo_dt: str | None = None,
     mitigation: str | None = None,
+    owner: str | None = None,
     major_incident_state: str | None = None,
+    nist_cvss_validation: str | None = None,
     aegis_meta: dict[str, Any] | None = None,
     acknowledgments: list[dict[str, Any]] | None = None,
     references: list[dict[str, Any]] | None = None,
@@ -118,7 +120,9 @@ def flaw_create(
         reported_dt: Date reported (ISO 8601, e.g. "2026-05-19T00:00:00Z").
         unembargo_dt: Planned unembargo date (ISO 8601).
         mitigation: Mitigation advice text.
+        owner: Flaw owner (Jira username for assignment, max 60 chars).
         major_incident_state: Major incident state (e.g. REQUESTED, APPROVED, REJECTED).
+        nist_cvss_validation: NIST CVSS validation status (REQUESTED, APPROVED, REJECTED, or empty).
         aegis_meta: AEGIS AI metadata dict for change tracking.
         acknowledgments: List of dicts, each with ``name`` (str), optional ``affiliation`` (str),
             optional ``from_upstream`` (bool, default false).
@@ -158,8 +162,12 @@ def flaw_create(
         flaw_data["unembargo_dt"] = unembargo_dt
     if mitigation is not None:
         flaw_data["mitigation"] = mitigation
+    if owner is not None:
+        flaw_data["owner"] = owner
     if major_incident_state is not None:
         flaw_data["major_incident_state"] = major_incident_state
+    if nist_cvss_validation is not None:
+        flaw_data["nist_cvss_validation"] = nist_cvss_validation
     if aegis_meta is not None:
         flaw_data["aegis_meta"] = aegis_meta
 
@@ -1179,24 +1187,26 @@ def flaw_comment_create(
 
 def flaw_label_add(
     flaw_id: str,
-    label: str,
+    name: str,
     *,
     state: str | None = None,
     contributor: str | None = None,
     label_type: str | None = None,
     relevant: bool | None = None,
 ) -> dict[str, Any]:
-    """Add a collaborator label to a flaw (POST /osidb/api/v1/flaws/{id}/labels).
+    """Add a label to a flaw (POST /osidb/api/v2/flaws/{id}/labels).
 
     Uses raw HTTP to bypass osidb-bindings model import errors on newer
-    label types (e.g. 'workflow') that bindings 5.13.0 does not support.
+    label types (e.g. 'workflow') that bindings 5.13.0 does not fully support.
 
     Args:
         flaw_id: Flaw UUID (required).
-        label: Label name (required).
+        name: Label name (required). For workflow transitions use
+            'approved' (reach DONE) or 'rejected' (reject flaw).
         state: Label state (NEW, REQ, DONE, SKIP). Default NEW.
         contributor: Contributor name.
         label_type: Label type (alias, context_based, workflow, bu).
+            Required on create.
         relevant: Whether the label is relevant (optional).
     """
     try:
@@ -1204,7 +1214,7 @@ def flaw_label_add(
     except ValueError:
         return {"ok": False, "error": "bad_request", "detail": "flaw_id must be a UUID for label operations"}
 
-    body: dict[str, Any] = {"label": label}
+    body: dict[str, Any] = {"name": name}
     if state is not None:
         body["state"] = state
     if contributor is not None:
@@ -1218,7 +1228,7 @@ def flaw_label_add(
     client = session.get_client_with_new_access_token()
     try:
         resp = requests.post(
-            f"{client.base_url}/osidb/api/v1/flaws/{flaw_uuid}/labels",
+            f"{client.base_url}/osidb/api/v2/flaws/{flaw_uuid}/labels",
             json=body,
             headers=client.get_headers(),
             verify=client.verify_ssl,
@@ -1240,7 +1250,7 @@ def flaw_label_update(
     label_type: str | None = None,
     relevant: bool | None = None,
 ) -> dict[str, Any]:
-    """Update a label on a flaw (PUT /osidb/api/v1/flaws/{id}/labels/{id}).
+    """Update a label on a flaw (PUT /osidb/api/v2/flaws/{id}/labels/{id}).
 
     Auto-fetches the current label for optimistic concurrency, then merges
     caller-provided field overrides.
@@ -1263,7 +1273,7 @@ def flaw_label_update(
 
     try:
         get_resp = requests.get(
-            f"{client.base_url}/osidb/api/v1/flaws/{flaw_uuid}/labels/{label_id}",
+            f"{client.base_url}/osidb/api/v2/flaws/{flaw_uuid}/labels/{label_id}",
             headers=client.get_headers(),
             verify=client.verify_ssl,
             auth=client.get_auth(),
@@ -1275,7 +1285,7 @@ def flaw_label_update(
         return _error_response(exc)
 
     data: dict[str, Any] = {}
-    for field in ("label", "state", "contributor", "type", "relevant"):
+    for field in ("name", "state", "contributor", "type", "relevant"):
         val = current.get(field)
         if val is not None:
             data[field] = val
@@ -1292,7 +1302,7 @@ def flaw_label_update(
 
     try:
         resp = requests.put(
-            f"{client.base_url}/osidb/api/v1/flaws/{flaw_uuid}/labels/{label_id}",
+            f"{client.base_url}/osidb/api/v2/flaws/{flaw_uuid}/labels/{label_id}",
             json=data,
             headers=client.get_headers(),
             verify=client.verify_ssl,
@@ -1309,7 +1319,7 @@ def flaw_label_remove(
     flaw_id: str,
     label_id: str,
 ) -> dict[str, Any]:
-    """Remove a label from a flaw (DELETE /osidb/api/v1/flaws/{id}/labels/{id}).
+    """Remove a label from a flaw (DELETE /osidb/api/v2/flaws/{id}/labels/{id}).
 
     Uses raw HTTP to bypass potential osidb-bindings model import errors.
 
@@ -1326,7 +1336,7 @@ def flaw_label_remove(
     client = session.get_client_with_new_access_token()
     try:
         resp = requests.delete(
-            f"{client.base_url}/osidb/api/v1/flaws/{flaw_uuid}/labels/{label_id}",
+            f"{client.base_url}/osidb/api/v2/flaws/{flaw_uuid}/labels/{label_id}",
             headers=client.get_headers(),
             verify=client.verify_ssl,
             auth=client.get_auth(),

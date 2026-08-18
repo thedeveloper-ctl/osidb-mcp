@@ -6,6 +6,7 @@ from mcp.server.fastmcp import FastMCP
 
 from osidb_mcp.config import AccessMode, Settings
 from osidb_mcp import tools_aegis
+from osidb_mcp import tools_diagnostic
 from osidb_mcp import tools_read
 
 
@@ -134,7 +135,7 @@ def create_server(settings: Settings) -> FastMCP:
     )(tools_read.flaw_acknowledgments_list)
     mcp.tool(
         name="flaw_labels_list",
-        description="Paginated collaborator labels for a flaw id.",
+        description="Paginated labels for a flaw id (v2 API). Includes workflow, context_based, alias, and bu label types.",
     )(tools_read.flaw_labels_list)
     mcp.tool(
         name="flaw_package_versions_list",
@@ -187,7 +188,7 @@ def create_server(settings: Settings) -> FastMCP:
     )(tools_read.flaw_comment_get)
     mcp.tool(
         name="flaw_label_get",
-        description="Retrieve a single collaborator label on a flaw by flaw id and label id.",
+        description="Retrieve a single label on a flaw by flaw id and label id (v2 API).",
     )(tools_read.flaw_label_get)
     mcp.tool(
         name="flaw_acknowledgment_get",
@@ -260,7 +261,12 @@ def create_server(settings: Settings) -> FastMCP:
     )(tools_read.workflows_list)
     mcp.tool(
         name="workflow_get",
-        description="Get details for a specific workflow by id. Use verbose=true for full state graph.",
+        description=(
+            "Get workflow classification for a flaw (by UUID or CVE) or a workflow definition. "
+            "Use verbose=true for all workflows with per-requirement acceptance booleans. "
+            "Use next=true to see what requirements must be met to advance to the next state. "
+            "Combine both for full diagnostic output (matches what OSIM uses)."
+        ),
     )(tools_read.workflow_get)
     mcp.tool(
         name="search_component",
@@ -269,6 +275,21 @@ def create_server(settings: Settings) -> FastMCP:
             "For PS ``ps_component`` filters, use ``search_flaws`` / ``flaws_list`` instead."
         ),
     )(tools_read.search_component)
+    mcp.tool(
+        name="audit_list",
+        description=(
+            "List audit trail events (GET /osidb/api/v1/audit). "
+            "Paginated change history. Filter by pgh_obj_id (object UUID), "
+            "pgh_obj_model (e.g. 'osidb.Flaw'), pgh_label, or pgh_created_at."
+        ),
+    )(tools_read.audit_list)
+    mcp.tool(
+        name="audit_get",
+        description=(
+            "Retrieve a single audit event by slug "
+            "(GET /osidb/api/v1/audit/{pgh_slug})."
+        ),
+    )(tools_read.audit_get)
     mcp.tool(
         name="query_affects",
         description=(
@@ -282,6 +303,29 @@ def create_server(settings: Settings) -> FastMCP:
             "May fail if the exploits integration is not enabled on this OSIDB instance."
         ),
     )(tools_read.get_pending_exploit_actions)
+
+    # -- Composite diagnostic tools --
+    mcp.tool(
+        name="flaw_workflow_diagnostic",
+        description=(
+            "Run a full workflow diagnostic on a flaw to determine what blocks advancement. "
+            "Returns: current state, missing fields, affect status (resolved/unresolved), "
+            "tracker gaps, alerts, next-state requirements (satisfied/unsatisfied), "
+            "Jira task_key existence, and a blockers summary. "
+            "Use this when a flaw is stuck and you need to figure out what is missing."
+        ),
+    )(tools_diagnostic.flaw_workflow_diagnostic)
+
+    if is_readwrite:
+        mcp.tool(
+            name="flaw_create_tracking_ticket",
+            description=(
+                "Create a Jira tracking ticket for a legacy flaw with no task_key. "
+                "For flaws created before OSIDB-Jira sync. Creates an audit/tracking issue "
+                "in the specified project (default OSIM). Does NOT link back to OSIDB task_key. "
+                "To trigger native OSIDB Jira task creation, use flaw_update(create_jira_task=True) instead."
+            ),
+        )(tools_diagnostic.flaw_create_tracking_ticket)
 
     # -- AEGIS AI-assisted analysis tools --
     mcp.tool(
@@ -319,7 +363,6 @@ def create_server(settings: Settings) -> FastMCP:
 
     if is_readwrite:
         from osidb_mcp import tools_write
-        from osidb_mcp import tools_workflow
 
         mcp.tool(
             name="flaw_create",
@@ -328,7 +371,8 @@ def create_server(settings: Settings) -> FastMCP:
                 "in a single composite operation. The flaw is created first via POST /osidb/api/v2/flaws, then "
                 "each sub-resource is created sequentially via v1 endpoints. Returns the flaw uuid and all "
                 "created sub-resource uuids. Supports partial-success reporting if the flaw was created but "
-                "a sub-resource call failed."
+                "a sub-resource call failed. Supports ``owner`` (Jira username for immediate assignment) "
+                "and ``nist_cvss_validation`` on creation."
             ),
         )(tools_write.flaw_create)
 
@@ -489,11 +533,13 @@ def create_server(settings: Settings) -> FastMCP:
             name="flaw_label_add",
             description=(
                 "Add a label to a flaw "
-                "(POST /osidb/api/v1/flaws/{id}/labels). "
-                "Requires flaw UUID. Optional state (NEW, REQ, DONE, SKIP), contributor, "
-                "label_type (alias, context_based, workflow, bu), relevant (bool). "
+                "(POST /osidb/api/v2/flaws/{id}/labels). "
+                "Requires flaw UUID and label name. label_type is required on create "
+                "(alias, context_based, workflow, bu). Optional state (NEW, REQ, DONE, SKIP), "
+                "contributor, relevant (bool). "
                 "To reach DONE workflow state on OSIDB >= 5.12, add a label named "
-                "'approved' with label_type='workflow'."
+                "'approved' with label_type='workflow'. To reject, add 'rejected' with "
+                "label_type='workflow'."
             ),
         )(tools_write.flaw_label_add)
 
@@ -501,7 +547,7 @@ def create_server(settings: Settings) -> FastMCP:
             name="flaw_label_update",
             description=(
                 "Update a label on a flaw "
-                "(PUT /osidb/api/v1/flaws/{id}/labels/{id}). "
+                "(PUT /osidb/api/v2/flaws/{id}/labels/{id}). "
                 "Auto-fetches current label for optimistic concurrency. "
                 "Supports changing state (NEW, REQ, DONE, SKIP), contributor, "
                 "label_type (alias, context_based, workflow, bu), relevant (bool)."
@@ -512,7 +558,7 @@ def create_server(settings: Settings) -> FastMCP:
             name="flaw_label_remove",
             description=(
                 "Remove a label from a flaw "
-                "(DELETE /osidb/api/v1/flaws/{id}/labels/{id}). "
+                "(DELETE /osidb/api/v2/flaws/{id}/labels/{id}). "
                 "Requires flaw UUID."
             ),
         )(tools_write.flaw_label_remove)
@@ -620,43 +666,6 @@ def create_server(settings: Settings) -> FastMCP:
         )(tools_write.affects_bulk_delete)
 
         mcp.tool(
-            name="flaw_promote",
-            description=(
-                "[DEPRECATED] Promote endpoint is a no-op on OSIDB >= 5.12. "
-                "Workflow state is now classified automatically based on flaw data. "
-                "To advance a flaw, fill in required fields via flaw_update / affect_add / "
-                "tracker_create, then add a workflow label named 'approved' via "
-                "flaw_label_add to reach DONE."
-            ),
-        )(tools_workflow.flaw_promote)
-
-        mcp.tool(
-            name="flaw_reject",
-            description=(
-                "[DEPRECATED] Reject endpoint is a no-op on OSIDB >= 5.12; "
-                "the reason argument is ignored. Rejection is now handled automatically "
-                "via workflow classification or by adding a label named 'rejected' "
-                "with type 'workflow'."
-            ),
-        )(tools_workflow.flaw_reject)
-
-        mcp.tool(
-            name="flaw_reset",
-            description=(
-                "[DEPRECATED] Reset endpoint is a no-op on OSIDB >= 5.12. "
-                "Workflow classification is now automatic and cannot be manually reset."
-            ),
-        )(tools_workflow.flaw_reset)
-
-        mcp.tool(
-            name="flaw_revert",
-            description=(
-                "[DEPRECATED] Revert endpoint is a no-op on OSIDB >= 5.12. "
-                "Workflow classification is now automatic and cannot be manually reverted."
-            ),
-        )(tools_workflow.flaw_revert)
-
-        mcp.tool(
             name="tracker_update",
             description=(
                 "Update a tracker (PUT /osidb/api/v2/trackers/{uuid}). "
@@ -672,22 +681,5 @@ def create_server(settings: Settings) -> FastMCP:
                 "(DELETE /osidb/api/v2/affects/{id}/cvss-scores/{id})."
             ),
         )(tools_write.affect_cvss_remove)
-
-        mcp.tool(
-            name="audit_list",
-            description=(
-                "List audit trail events (GET /osidb/api/v1/audit). "
-                "Paginated change history. Filter by pgh_obj_id (object UUID), "
-                "pgh_obj_model (e.g. 'osidb.Flaw'), pgh_label, or pgh_created_at."
-            ),
-        )(tools_read.audit_list)
-
-        mcp.tool(
-            name="audit_get",
-            description=(
-                "Retrieve a single audit event by slug "
-                "(GET /osidb/api/v1/audit/{pgh_slug})."
-            ),
-        )(tools_read.audit_get)
 
     return mcp

@@ -72,6 +72,8 @@ All **MCP tools** require a working OSIDB session (env + Kerberos or basic auth)
 | `tracker_get` | Single **tracker filing** by uuid; optional field projection / `include_meta_attr`. |
 | `labels_list` | Paginated **global** OSIDB labels (`GET /labels`); optional allowlisted `extra_query`. |
 | `affect_cvss_scores_list` | Paginated **CVSS** rows for one affect (by affect uuid); optional allowlisted `extra_query`. |
+| `audit_list` | Paginated audit trail events (`GET /osidb/api/v1/audit`). Filter by object, model, label, or time. |
+| `audit_get` | Single audit event by slug. |
 | `search_component` | Flaws whose flaw-level **components** intersect `components_in` (v2 flaws list); optional impact/workflow/date filters. |
 | `query_affects` | **Affect rows** by CVE (`flaw_cve_id` / `flaw_cve_id_in`) and/or flaw UUID (`flaw_uuid` / `flaw_uuid_in`); wrapper over `affects_list`. |
 | `get_pending_exploit_actions` | **[EXPERIMENTAL]** `GET /exploits/api/v1|v2/report/pending` — pending exploit / IR actions; may 404 if exploits app is off. |
@@ -84,16 +86,56 @@ These tools are only registered when `OSIDB_MCP_ACCESS_MODE=readwrite`.
 
 | Tool | Purpose |
 |------|---------|
-| `flaw_create` | Create a new flaw with optional sub-resources (acknowledgments, references, CVSS scores) in a single composite operation. |
-| `flaw_update` | Update fields on an existing flaw. Auto-fetches `updated_dt` for optimistic concurrency. |
-| `affect_add` | Add one or more affects to a flaw. Auto-injects `flaw` UUID and `embargoed` from parent flaw. |
+| **Flaw CRUD** | |
+| `flaw_create` | Create a new flaw with optional sub-resources (acknowledgments, references, CVSS). Supports `owner` and `nist_cvss_validation`. |
+| `flaw_update` | Update fields on an existing flaw. Auto-fetches `updated_dt` for optimistic concurrency. Supports `create_jira_task`. |
+| **Affects** | |
+| `affect_add` | Add one or more affects to a flaw. Auto-injects `flaw` UUID and `embargoed`. |
 | `affect_remove` | Remove one or more affects by UUID. |
-| `flaw_acknowledgment_add` | Add acknowledgment(s) to an existing flaw. |
-| `flaw_acknowledgment_remove` | Remove an acknowledgment from a flaw. |
-| `flaw_reference_add` | Add reference(s) to an existing flaw. |
-| `flaw_reference_remove` | Remove a reference from a flaw. |
-
+| `affect_update` | Update fields on an existing affect (affectedness, resolution, justification). |
+| `affect_update_bulk` | Bulk-update multiple affects in one call. |
+| `affects_bulk_create` | Bulk-create affects in one API call. |
+| `affects_bulk_update` | Bulk-update affects in one API call. |
+| `affects_bulk_delete` | Bulk-delete affects by UUID list. |
+| **Trackers** | |
+| `tracker_create` | Create a single tracker for one or more affects. Use `tracker_suggestions` first. |
+| `trackers_bulk_file` | Bulk-file trackers for a flaw (get suggestions, filter, file). Supports `dry_run`. |
+| `tracker_update` | Update tracker metadata. |
+| **CVSS** | |
+| `flaw_cvss_add` | Add CVSS score(s) to a flaw. |
+| `flaw_cvss_remove` | Remove a CVSS score from a flaw. |
+| `flaw_cvss_update` | Update a CVSS score on a flaw. |
+| `affect_cvss_add` | Add CVSS score(s) to an affect. |
+| `affect_cvss_update` | Update a CVSS score on an affect. |
+| `affect_cvss_remove` | Delete a CVSS score from an affect. |
+| **Labels (v2 API)** | |
+| `flaw_label_add` | Add a label to a flaw (v2 API). Supports `workflow` type for state transitions. |
+| `flaw_label_update` | Update a label on a flaw (v2 API). |
+| `flaw_label_remove` | Remove a label from a flaw (v2 API). |
+| **Sub-resources** | |
+| `flaw_acknowledgment_add` | Add acknowledgment(s) to a flaw. |
+| `flaw_acknowledgment_remove` | Remove an acknowledgment. |
+| `flaw_acknowledgment_update` | Update an acknowledgment. |
+| `flaw_reference_add` | Add reference(s) to a flaw. |
+| `flaw_reference_remove` | Remove a reference. |
+| `flaw_reference_update` | Update a reference. |
+| `flaw_comment_create` | Create a comment on a flaw. Supports internal Jira comments. |
+| `flaw_incident_request` | Create an incident request (MAJOR, MINOR, EXPLOITS_KEV). |
+| `flaw_package_version_add` | Add package version info to a flaw. |
+| `flaw_package_version_update` | Update a package version entry. |
+| `flaw_package_version_delete` | Delete a package version entry. |
 All write tools return `{"ok": true, ...}` on success. On partial failure (e.g. flaw created but a sub-resource failed), they return `{"ok": true, "partial": true, "errors": [...]}`.
+
+### Workflow model (OSIDB >= 5.12)
+
+Workflow state is **auto-classified** based on flaw data completeness. No manual promote/reject actions are needed.
+
+**State progression:** `NEW` -> `TRIAGE` -> `ANALYSIS` -> `PRE_SECONDARY_ASSESSMENT` -> `SECONDARY_ASSESSMENT` -> `DONE`
+
+Each transition happens automatically when the flaw's data satisfies the state's requirements. Use `workflow_get(flaw_id, verbose=True, next=True)` to inspect requirements.
+
+- **To approve (reach DONE):** `flaw_label_add(name='approved', label_type='workflow')`
+- **To reject:** `flaw_label_add(name='rejected', label_type='workflow')` (auto-classifies into `REJECTED:DONE`)
 
 ### When to use which
 

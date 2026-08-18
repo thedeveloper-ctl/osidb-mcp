@@ -1,3 +1,12 @@
+## 0.3.0
+
+- **Labels v2 API migration:** Label CRUD operations (`flaw_label_add`, `flaw_label_update`, `flaw_label_remove`, `flaw_labels_list`, `flaw_label_get`) now use the OSIDB v2 labels API (`/osidb/api/v2/flaws/{id}/labels`) instead of the deprecated v1 endpoints. The `label` parameter on `flaw_label_add` is renamed to `name` to match the v2 schema.
+- **Workflow `next` parameter:** `workflow_get` now supports `next=True` to return the next state and its requirement acceptance status, matching what OSIM uses for the next-state requirements panel.
+- **Audit tools always available:** `audit_list` and `audit_get` are now registered in both `readonly` and `readwrite` modes (they are read-only operations).
+- **`flaw_create` new fields:** `owner` (Jira username for immediate assignment) and `nist_cvss_validation` are now accepted on flaw creation, matching the full OSIDB `FlawPostRequest` schema.
+- **Removed deprecated workflow tools:** `flaw_promote`, `flaw_reject`, `flaw_reset`, and `flaw_revert` have been removed entirely. They were no-ops on OSIDB >= 5.12. Use `flaw_label_add(name='approved', label_type='workflow')` to reach DONE, or `flaw_label_add(name='rejected', label_type='workflow')` to reject. Workflow state is now auto-classified based on flaw data completeness.
+- **Documentation:** README write tools table updated to reflect all 38 write tools (was 8). TOOLS.md updated with workflow model documentation, write tool reference, and audit tool sections. CHANGELOG covers all changes since 0.2.0.
+
 ## 0.2.1
 
 - **Fix `extra_query` dates:** ISO date/datetime strings in `extra_query` (e.g. `created_dt__gte`, `reported_dt__gte`, `created_dt__date__gte`) are now parsed before calling `osidb-bindings`, which expects Python `datetime`/`date` objects. Fixes `'str' object has no attribute 'isoformat'` when filtering flaws by creation or report date.

@@ -1547,20 +1547,20 @@ def test_label_add_success(mock_get_session: MagicMock, mock_post: MagicMock) ->
 
     post_resp = MagicMock()
     post_resp.raise_for_status.return_value = None
-    post_resp.json.return_value = {"label": "triage", "state": "NEW"}
+    post_resp.json.return_value = {"name": "triage", "state": "NEW"}
     mock_post.return_value = post_resp
 
     result = flaw_label_add(
         flaw_id="aaa58a80-dd9c-43dd-ba19-61fa88a66714",
-        label="triage",
+        name="triage",
     )
 
     assert result["ok"] is True
-    assert result["label"]["label"] == "triage"
+    assert result["label"]["name"] == "triage"
 
 
 def test_label_add_invalid_uuid() -> None:
-    result = flaw_label_add(flaw_id="not-a-uuid", label="triage")
+    result = flaw_label_add(flaw_id="not-a-uuid", name="triage")
     assert result["ok"] is False
     assert result["error"] == "bad_request"
 

@@ -11,7 +11,8 @@ This document describes each MCP tool exposed by **osidb-mcp**: what it is for, 
 - **`api_version`:** Optional string forwarded to bindings when you need a non-default OSIDB API version; leave unset for typical v2 behaviour.
 - **Errors:** On failure, tools return JSON with `"ok": false` plus `error` / `detail` / `status_code` fields where applicable, rather than throwing inside the MCP layer.
 - **CVE vs `uuid`:** Every flaw has a stable internal **`uuid`** in OSIDB. **`cve_id`** may be empty until assigned. Use **`uuid`** as `flaw_id` for retrieve/subresource tools when there is no CVE; use **`flaw_uuid`** / **`affects_flaw_uuid`** on list APIs. **`flaws_list`** / **`flaws_search`** responses include **`identifier_hint`**; **`flaw_get`** / **`get_flaw_details`** may add **`osidb_flaw_uuid`** when there is no CVE. Omitting **`uuid`** from **`include_fields`** hides it from the payload.
-- **Access mode:** Only **`OSIDB_MCP_ACCESS_MODE=readonly`** is accepted (`readwrite` exits at startup). See [SECURITY.md](SECURITY.md).
+- **Access mode:** `OSIDB_MCP_ACCESS_MODE` accepts `readonly` (default, 47 tools) or `readwrite` (83 tools, includes all mutation tools). See [SECURITY.md](SECURITY.md).
+- **Workflow model (OSIDB >= 5.12):** Workflow state is auto-classified based on flaw data completeness. State progression: `NEW` -> `TRIAGE` -> `ANALYSIS` -> `PRE_SECONDARY_ASSESSMENT` -> `SECONDARY_ASSESSMENT` -> `DONE`. Use `workflow_get(id, verbose=True, next=True)` to see what requirements must be met to advance. To approve: `flaw_label_add(name='approved', label_type='workflow')`. To reject: `flaw_label_add(name='rejected', label_type='workflow')`.
 
 ---
 
@@ -385,6 +386,46 @@ Q: "Fetch the v1 pending exploit report"
 
 ---
 
+## `audit_list`
+
+**Purpose:** List audit trail events (`GET /osidb/api/v1/audit`). Paginated change history for tracking modifications to flaws, affects, and other OSIDB objects.
+
+**Typical parameters:** `pgh_obj_id` (object UUID), `pgh_obj_model` (e.g. `"osidb.Flaw"`), `pgh_label`, `pgh_created_at`, `limit`, `offset`.
+
+**Availability:** Always available (readonly and readwrite modes).
+
+---
+
+## `audit_get`
+
+**Purpose:** Retrieve a single audit event by slug (`GET /osidb/api/v1/audit/{pgh_slug}`).
+
+**Availability:** Always available (readonly and readwrite modes).
+
+---
+
+## Write tools (`readwrite` mode only)
+
+The following tools are only registered when `OSIDB_MCP_ACCESS_MODE=readwrite`. See [README.md](README.md) for the full table.
+
+### `flaw_create`
+
+Create a new OSIDB flaw with optional sub-resources. Supports `owner` for immediate Jira assignment and `nist_cvss_validation`.
+
+### `flaw_label_add`
+
+Add a label to a flaw via the **v2 API** (`POST /osidb/api/v2/flaws/{id}/labels`). The `name` parameter is the label name; `label_type` is required on create (`alias`, `context_based`, `workflow`, `bu`).
+
+**Workflow transitions (OSIDB >= 5.12):**
+- To approve (reach DONE): `flaw_label_add(name='approved', label_type='workflow')`
+- To reject: `flaw_label_add(name='rejected', label_type='workflow')`
+
+### `workflow_get` (enhanced)
+
+Use `verbose=True` and `next=True` to see all workflows with per-requirement acceptance booleans and what is needed for the next state. This matches what OSIM uses for its next-state requirements panel.
+
+---
+
 ## When to use which (cheat sheet)
 
 | Goal | Tool |
@@ -399,6 +440,12 @@ Q: "Fetch the v1 pending exploit report"
 | One affect or tracker by uuid | `affect_get`, `tracker_get` |
 | Global label catalog | `labels_list` |
 | CVSS rows per affect | `affect_cvss_scores_list` |
+| Audit / change history | `audit_list`, `audit_get` |
 | Health / identity | `osidb_status`, `osidb_whoami` |
+| Advance flaw workflow | `flaw_label_add` (with `label_type='workflow'`) |
+| Check workflow requirements | `workflow_get` (with `verbose=True, next=True`) |
+| Create / update flaws | `flaw_create`, `flaw_update` |
+| Manage affects | `affect_add`, `affect_update`, `affect_update_bulk`, `affects_bulk_*` |
+| File trackers | `tracker_create`, `trackers_bulk_file` |
 
 For configuration snippets (Cursor, Claude, env vars), see [README.md](README.md).

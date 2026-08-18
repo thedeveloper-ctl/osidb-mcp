@@ -770,7 +770,7 @@ def flaw_labels_list(
     *,
     limit: int = DEFAULT_LIST_LIMIT,
     offset: int = 0,
-    api_version: str | None = None,
+    api_version: str | None = "v2",
 ) -> dict[str, Any]:
     lim = clamp_limit(limit)
     off = clamp_offset(offset)
@@ -991,7 +991,7 @@ def flaw_label_get(
     flaw_id: str,
     label_id: str,
     *,
-    api_version: str | None = None,
+    api_version: str | None = "v2",
 ) -> dict[str, Any]:
     try:
         label = get_session().flaws.labels.retrieve(
@@ -1267,11 +1267,24 @@ def workflow_get(
     workflow_id: str,
     *,
     verbose: bool = False,
+    next: bool = False,
 ) -> dict[str, Any]:
+    """Get classification for a flaw or workflow definition.
+
+    Args:
+        workflow_id: Flaw UUID, CVE id, or workflow name.
+        verbose: If True, return all workflows with per-requirement
+            acceptance booleans (useful for debugging classification).
+        next: If True, return the next state and its requirement
+            acceptance status (useful for seeing what is needed to
+            advance the flaw).
+    """
     try:
         kw: dict[str, Any] = {}
         if verbose:
             kw["verbose"] = True
+        if next:
+            kw["next"] = True
         return _raw_api_call(
             "osidb_bindings.bindings.python_client.api.workflows.workflows_api_v1_workflows_retrieve_2",
             workflow_id, **kw,
