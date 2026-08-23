@@ -14,9 +14,6 @@ from osidb_bindings.bindings.python_client.models.osidb_api_v2_affects_list_flaw
 from osidb_bindings.bindings.python_client.models.osidb_api_v2_affects_list_flaw_impact_in_item import (
     OsidbApiV2AffectsListFlawImpactInItem,
 )
-from osidb_bindings.bindings.python_client.models.osidb_api_v2_affects_list_flaw_workflow_state_item import (
-    OsidbApiV2AffectsListFlawWorkflowStateItem,
-)
 from osidb_bindings.bindings.python_client.models.osidb_api_v2_flaws_list_impact import (
     OsidbApiV2FlawsListImpact,
 )
@@ -34,9 +31,6 @@ from osidb_bindings.bindings.python_client.models.osidb_api_v2_flaws_list_source
 )
 from osidb_bindings.bindings.python_client.models.osidb_api_v2_flaws_list_source_in_item import (
     OsidbApiV2FlawsListSourceInItem,
-)
-from osidb_bindings.bindings.python_client.models.osidb_api_v2_flaws_list_workflow_state_item import (
-    OsidbApiV2FlawsListWorkflowStateItem,
 )
 
 from osidb_mcp.errors import http_error_payload
@@ -107,14 +101,6 @@ def _impact_in(values: list[str] | None) -> list[OsidbApiV2FlawsListImpactInItem
     if not values:
         return None
     return [OsidbApiV2FlawsListImpactInItem(v) for v in values]
-
-
-def _workflow_in(
-    values: list[str] | None,
-) -> list[OsidbApiV2FlawsListWorkflowStateItem] | None:
-    if not values:
-        return None
-    return [OsidbApiV2FlawsListWorkflowStateItem(v) for v in values]
 
 
 def osidb_status() -> dict[str, Any]:
@@ -225,9 +211,9 @@ def _build_flaws_kwargs(
     if affects_ps_update_stream_in:
         kw["affects__ps_update_stream__in"] = affects_ps_update_stream_in
     if workflow_state:
-        kw["workflow_state"] = _workflow_in(workflow_state)
+        kw["workflow_state"] = workflow_state
     if workflow_state_in:
-        kw["workflow_state__in"] = _workflow_in(workflow_state_in)
+        kw["workflow_state__in"] = workflow_state_in
     if impact:
         kw["impact"] = OsidbApiV2FlawsListImpact(impact)
     if impact_in:
@@ -457,14 +443,6 @@ def _affects_impact_in(
     return [OsidbApiV2AffectsListFlawImpactInItem(v) for v in values]
 
 
-def _affects_workflow_in(
-    values: list[str] | None,
-) -> list[OsidbApiV2AffectsListFlawWorkflowStateItem] | None:
-    if not values:
-        return None
-    return [OsidbApiV2AffectsListFlawWorkflowStateItem(v) for v in values]
-
-
 def affects_list(
     *,
     ps_module: str | None = None,
@@ -518,11 +496,9 @@ def affects_list(
                 _parse_uuid_param("flaw_uuid_in", u) for u in flaw_uuid_in
             ]
         if flaw_workflow_state:
-            kw["flaw__workflow_state"] = _affects_workflow_in(flaw_workflow_state)
+            kw["flaw__workflow_state"] = flaw_workflow_state
         if flaw_workflow_state_in:
-            kw["flaw__workflow_state__in"] = _affects_workflow_in(
-                flaw_workflow_state_in
-            )
+            kw["flaw__workflow_state__in"] = flaw_workflow_state_in
         if flaw_impact:
             kw["flaw__impact"] = OsidbApiV2AffectsListFlawImpact(flaw_impact)
         if flaw_impact_in:
@@ -920,10 +896,13 @@ def affect_cvss_scores_list(
 # --- High-level capability tools (triage-style search / rollups) ---
 
 _IMPACTS_ORDER = ("CRITICAL", "IMPORTANT", "MODERATE", "LOW")
-_WORKFLOW_STATES_SUMMARY = tuple(
-    str(x.value)
-    for x in OsidbApiV2FlawsListWorkflowStateItem
-    if x.value
+_WORKFLOW_STATES_SUMMARY = (
+    "DONE",
+    "NEW",
+    "PRE_SECONDARY_ASSESSMENT",
+    "REJECTED",
+    "SECONDARY_ASSESSMENT",
+    "TRIAGE",
 )
 
 

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "osidb-mcp"
-version = "0.2.1"
+version = "0.2.2"
 description = "Model Context Protocol (MCP) server for OSIDB using osidb-bindings"
 readme = "README.md"
 license = "MIT"
@@ -45,7 +45,7 @@ include = ["src/osidb_mcp", "README.md", "LICENSE", "CHANGELOG.md", "SECURITY.md
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["."]
+pythonpath = ["src"]
 markers = [
   "live_osidb: optional integration tests against a real OSIDB (under live_tests/)",
 ]
