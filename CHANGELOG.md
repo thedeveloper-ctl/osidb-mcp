@@ -8,6 +8,7 @@
 - **Compact payloads:** Default list `limit` is 20 (still capped at 100). Flaw list tools default to a short `include_fields` set. `get_flaw_details` returns compact affect/tracker rows (`compact=true`). Oversized JSON is truncated at 64 KiB.
 - **OSIDB 5.16:** `search_flaws` / `flaws_list` accept `flaw_labels`. `workflow_get` supports `history=true`. Label add/update accept optional `reason`. `product_family` labels are rejected as read-only. `owner` docs use email (OSIM), not Jira username.
 - **Dropped `identifier_hint`** from list/search payloads (uuid is already on each row).
+- **Fix `workflow_get(next=True)`:** pass `next_` to osidb-bindings (`next` is a Python keyword in the generated client).
 
 ## 0.3.0
 

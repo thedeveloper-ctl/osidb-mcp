@@ -1320,7 +1320,8 @@ def workflow_get(
         if verbose:
             kw["verbose"] = True
         if next:
-            kw["next"] = True
+            # Generated osidb-bindings use next_ (next is a Python keyword).
+            kw["next_"] = True
         if history:
             kw["history"] = True
         return _raw_api_call(

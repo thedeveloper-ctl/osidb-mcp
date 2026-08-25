@@ -375,6 +375,18 @@ def test_workflow_get_history(mock_raw: MagicMock) -> None:
     assert kwargs["history"] is True
 
 
+@patch("osidb_mcp.tools_read._raw_api_call")
+def test_workflow_get_next_uses_bindings_next_(mock_raw: MagicMock) -> None:
+    mock_raw.return_value = {"ok": True, "data": {"id": "DEFAULT", "next": None}}
+
+    result = workflow_get("DEFAULT", next=True)
+
+    assert result["ok"] is True
+    _, kwargs = mock_raw.call_args
+    assert kwargs["next_"] is True
+    assert "next" not in kwargs
+
+
 @patch("osidb_mcp.tools_read.trackers_list")
 @patch("osidb_mcp.tools_read.affects_list")
 @patch("osidb_mcp.tools_read.flaw_get")
