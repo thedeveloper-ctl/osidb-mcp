@@ -52,14 +52,32 @@ from osidb_mcp.query_filters import (
     merge_extra_query,
     parse_dt,
 )
-from osidb_mcp.serialize import paginated_summary, to_jsonable
+from osidb_mcp.serialize import cap_payload, paginated_summary, to_jsonable
 from osidb_mcp.session_holder import get_session
 
-# Shown on flaw list/search responses so agents keep the stable OSIDB id when cve_id is empty.
-_FLAW_LIST_IDENTITY_HINT = (
-    "Each flaw has `uuid` (internal OSIDB id). When `cve_id` is null or empty, use that `uuid` "
-    "as `flaw_id` for flaw_get / get_flaw_details / flaw_*_list; for affects_list use `flaw_uuid`, "
-    "for trackers_list use `affects_flaw_uuid`."
+DEFAULT_FLAW_LIST_FIELDS = [
+    "uuid",
+    "cve_id",
+    "title",
+    "impact",
+    "workflow_state",
+    "owner",
+    "embargoed",
+    "components",
+]
+_COMPACT_AFFECT_KEYS = (
+    "uuid",
+    "ps_module",
+    "ps_component",
+    "affectedness",
+    "resolution",
+)
+_COMPACT_TRACKER_KEYS = (
+    "uuid",
+    "type",
+    "external_system_id",
+    "status",
+    "ps_update_stream",
 )
 
 
@@ -81,10 +99,19 @@ def _envelope_osidb_flaw_uuid_when_no_cve(body: dict[str, Any]) -> dict[str, Any
     return body
 
 
-def _attach_flaw_list_identity_hint(body: dict[str, Any]) -> dict[str, Any]:
-    if body.get("ok"):
-        body["identifier_hint"] = _FLAW_LIST_IDENTITY_HINT
-    return body
+def _compact_rows(payload: Any, keys: tuple[str, ...]) -> Any:
+    if not isinstance(payload, dict):
+        return payload
+    if not payload.get("ok"):
+        return payload
+    rows = []
+    for item in payload.get("results") or []:
+        d = item if isinstance(item, dict) else to_jsonable(item)
+        if isinstance(d, dict):
+            rows.append({k: d.get(k) for k in keys})
+        else:
+            rows.append(d)
+    return {"count": payload.get("count"), "results": rows}
 
 
 def _parse_uuid_param(name: str, value: str) -> UUID:
@@ -193,8 +220,10 @@ def _build_flaws_kwargs(
     source_in: list[str] | None,
     include_fields: list[str] | None,
     exclude_fields: list[str] | None,
+    flaw_labels: list[str] | None,
     limit: int,
     offset: int,
+    apply_default_fields: bool = True,
 ) -> dict[str, Any]:
     kw: dict[str, Any] = {"limit": limit, "offset": offset}
     if search:
@@ -255,8 +284,12 @@ def _build_flaws_kwargs(
         kw["source__in"] = [OsidbApiV2FlawsListSourceInItem(s) for s in source_in]
     if include_fields:
         kw["include_fields"] = include_fields
+    elif apply_default_fields and not exclude_fields:
+        kw["include_fields"] = list(DEFAULT_FLAW_LIST_FIELDS)
     if exclude_fields:
         kw["exclude_fields"] = exclude_fields
+    if flaw_labels:
+        kw["flaw_labels"] = flaw_labels
     return kw
 
 
@@ -295,6 +328,7 @@ def flaws_list(
     offset: int = 0,
     api_version: str | None = None,
     extra_query: dict[str, Any] | None = None,
+    flaw_labels: list[str] | None = None,
 ) -> dict[str, Any]:
     lim = clamp_limit(limit)
     off = clamp_offset(offset)
@@ -330,6 +364,7 @@ def flaws_list(
             source_in=source_in,
             include_fields=include_fields,
             exclude_fields=exclude_fields,
+            flaw_labels=flaw_labels,
             limit=lim,
             offset=off,
         )
@@ -343,12 +378,10 @@ def flaws_list(
             api_version=api_version,
             **merged,
         )
-        return _attach_flaw_list_identity_hint(
-            {
-                "ok": True,
-                **paginated_summary(resp, limit=lim, offset=off),
-            }
-        )
+        return {
+            "ok": True,
+            **paginated_summary(resp, limit=lim, offset=off),
+        }
     except (requests.RequestException, ValueError) as e:
         if isinstance(e, ValueError):
             return {"ok": False, "error": "bad_request", "detail": str(e)}
@@ -419,8 +452,10 @@ def flaws_count(
             source_in=source_in,
             include_fields=None,
             exclude_fields=None,
+            flaw_labels=None,
             limit=50,
             offset=0,
+            apply_default_fields=False,
         )
         base.pop("limit", None)
         base.pop("offset", None)
@@ -450,12 +485,10 @@ def flaws_search(
             api_version=api_version,
             limit=lim,
         )
-        return _attach_flaw_list_identity_hint(
-            {
-                "ok": True,
-                **paginated_summary(resp, limit=lim, offset=0),
-            }
-        )
+        return {
+            "ok": True,
+            **paginated_summary(resp, limit=lim, offset=0),
+        }
     except requests.RequestException as e:
         return {"ok": False, **http_error_payload(e)}
 
@@ -1268,6 +1301,7 @@ def workflow_get(
     *,
     verbose: bool = False,
     next: bool = False,
+    history: bool = False,
 ) -> dict[str, Any]:
     """Get classification for a flaw or workflow definition.
 
@@ -1278,6 +1312,8 @@ def workflow_get(
         next: If True, return the next state and its requirement
             acceptance status (useful for seeing what is needed to
             advance the flaw).
+        history: If True, include classification change history with
+            human-readable ``reason`` (OSIDB-5346).
     """
     try:
         kw: dict[str, Any] = {}
@@ -1285,6 +1321,8 @@ def workflow_get(
             kw["verbose"] = True
         if next:
             kw["next"] = True
+        if history:
+            kw["history"] = True
         return _raw_api_call(
             "osidb_bindings.bindings.python_client.api.workflows.workflows_api_v1_workflows_retrieve_2",
             workflow_id, **kw,
@@ -1325,10 +1363,11 @@ def search_flaws(
     offset: int = 0,
     api_version: str | None = None,
     extra_query: dict[str, Any] | None = None,
+    flaw_labels: list[str] | None = None,
 ) -> dict[str, Any]:
     """
     Search flaws by CVE id(s), severity (impact), date range (changed_after/before),
-    product hints (PS modules / component names), workflow name, and/or free-text keyword.
+    product hints (PS modules / component names), workflow name, labels, and/or free-text keyword.
     """
     keyword = (keyword or "").strip() or None
     has_structured = any(
@@ -1349,6 +1388,7 @@ def search_flaws(
             embargoed is not None,
             owner_isempty is not None,
             extra_query,
+            flaw_labels,
         ]
     )
     if keyword and not has_structured:
@@ -1382,6 +1422,7 @@ def search_flaws(
         offset=offset,
         api_version=api_version,
         extra_query=extra_query,
+        flaw_labels=flaw_labels,
     )
 
 
@@ -1392,6 +1433,7 @@ def get_flaw_details(
     include_trackers: bool = True,
     affects_limit: int = DEFAULT_LIST_LIMIT,
     trackers_limit: int = DEFAULT_LIST_LIMIT,
+    compact: bool = True,
     api_version: str | None = None,
 ) -> dict[str, Any]:
     """
@@ -1464,7 +1506,13 @@ def get_flaw_details(
                     api_version=api_version,
                 )
 
-    return _envelope_osidb_flaw_uuid_when_no_cve(out)
+    if compact:
+        if include_affects and isinstance(out.get("affects"), dict) and out["affects"].get("ok"):
+            out["affects"] = _compact_rows(out["affects"], _COMPACT_AFFECT_KEYS)
+        if include_trackers and isinstance(out.get("trackers"), dict) and out["trackers"].get("ok"):
+            out["trackers"] = _compact_rows(out["trackers"], _COMPACT_TRACKER_KEYS)
+
+    return cap_payload(_envelope_osidb_flaw_uuid_when_no_cve(out))
 
 
 def get_cve_summary(

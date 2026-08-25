@@ -6,13 +6,13 @@ This document describes each MCP tool exposed by **osidb-mcp**: what it is for, 
 
 - **Authentication:** Every tool below (except your client’s own handling) assumes `OSIDB_BASE_URL` and a working session — Kerberos ticket or basic auth — as described in the README. Tokens are obtained and refreshed via **osidb-bindings**; you do not pass tokens into tools.
 - **Embargoed data:** Responses may include embargoed flaws or fields depending on your OSIDB account. Treat logs and transcripts accordingly.
-- **Pagination:** List-style tools clamp `limit` to **at most 100** and default it to **50** when omitted. Responses include `count`, `limit`, `offset`, and `results`. When `next` / `next_offset` are present, more pages exist — repeat with a higher `offset` (often `next_offset`) until exhausted.
+- **Pagination:** List-style tools clamp `limit` to **at most 100** and default it to **20** when omitted. Responses include `count`, `limit`, `offset`, and `results`. When `next` / `next_offset` are present, more pages exist — repeat with a higher `offset` (often `next_offset`) until exhausted.
 - **`extra_query`:** On `flaws_list`, `flaws_count`, `affects_list`, and `trackers_list`, you may pass additional query keys only if they appear on the official OSIDB **v2** list endpoint for that resource. Unknown keys are rejected. There are caps on how many keys and how long list values may be (see `query_filters.py` in the repo).
 - **`api_version`:** Optional string forwarded to bindings when you need a non-default OSIDB API version; leave unset for typical v2 behaviour.
 - **Errors:** On failure, tools return JSON with `"ok": false` plus `error` / `detail` / `status_code` fields where applicable, rather than throwing inside the MCP layer.
-- **CVE vs `uuid`:** Every flaw has a stable internal **`uuid`** in OSIDB. **`cve_id`** may be empty until assigned. Use **`uuid`** as `flaw_id` for retrieve/subresource tools when there is no CVE; use **`flaw_uuid`** / **`affects_flaw_uuid`** on list APIs. **`flaws_list`** / **`flaws_search`** responses include **`identifier_hint`**; **`flaw_get`** / **`get_flaw_details`** may add **`osidb_flaw_uuid`** when there is no CVE. Omitting **`uuid`** from **`include_fields`** hides it from the payload.
-- **Access mode:** `OSIDB_MCP_ACCESS_MODE` accepts `readonly` (default, 47 tools) or `readwrite` (83 tools, includes all mutation tools). See [SECURITY.md](SECURITY.md).
-- **Workflow model (OSIDB >= 5.12):** Workflow state is auto-classified based on flaw data completeness. State progression: `NEW` -> `TRIAGE` -> `ANALYSIS` -> `PRE_SECONDARY_ASSESSMENT` -> `SECONDARY_ASSESSMENT` -> `DONE`. Use `workflow_get(id, verbose=True, next=True)` to see what requirements must be met to advance. To approve: `flaw_label_add(name='approved', label_type='workflow')`. To reject: `flaw_label_add(name='rejected', label_type='workflow')`.
+- **CVE vs `uuid`:** Every flaw has a stable internal **`uuid`** in OSIDB. **`cve_id`** may be empty until assigned. Use **`uuid`** as `flaw_id` for retrieve/subresource tools when there is no CVE; use **`flaw_uuid`** / **`affects_flaw_uuid`** on list APIs. **`flaw_get`** / **`get_flaw_details`** may add **`osidb_flaw_uuid`** when there is no CVE. Omitting **`uuid`** from **`include_fields`** hides it from the payload.
+- **Access mode:** `OSIDB_MCP_ACCESS_MODE` accepts `readonly` (default) or `readwrite`. `OSIDB_MCP_PROFILE` accepts `full` (default), `lifecycle`, or `core` and controls which tools are advertised. See [SECURITY.md](SECURITY.md).
+- **Workflow model (OSIDB >= 5.12):** Workflows are `DEFAULT`, `MANUAL`, `EMBARGOED`, and `REJECTED`. `MANUAL` and `EMBARGOED` skip `ANALYSIS`. State progression on DEFAULT: `NEW` -> `TRIAGE` -> `ANALYSIS` -> `PRE_SECONDARY_ASSESSMENT` -> `SECONDARY_ASSESSMENT` -> `DONE`. Use `workflow_get(id, verbose=True, next=True)` to see what requirements must be met to advance; `history=True` adds classification change history. To approve: `flaw_label_add(name='approved', label_type='workflow')`. To reject: `flaw_label_add(name='rejected', label_type='workflow')`.
 
 ---
 
@@ -410,11 +410,11 @@ The following tools are only registered when `OSIDB_MCP_ACCESS_MODE=readwrite`. 
 
 ### `flaw_create`
 
-Create a new OSIDB flaw with optional sub-resources. Supports `owner` for immediate Jira assignment and `nist_cvss_validation`.
+Create a new OSIDB flaw with optional sub-resources. Supports `owner` (email address used by OSIM) and `nist_cvss_validation`.
 
 ### `flaw_label_add`
 
-Add a label to a flaw via the **v2 API** (`POST /osidb/api/v2/flaws/{id}/labels`). The `name` parameter is the label name; `label_type` is required on create (`alias`, `context_based`, `workflow`, `bu`).
+Add a label to a flaw via the **v2 API** (`POST /osidb/api/v2/flaws/{id}/labels`). The `name` parameter is the label name; `label_type` is required on create (`alias`, `context_based`, `workflow`, `bu`). Optional `reason` (OSIDB 5.16). `product_family` labels are read-only and rejected.
 
 **Workflow transitions (OSIDB >= 5.12):**
 - To approve (reach DONE): `flaw_label_add(name='approved', label_type='workflow')`
@@ -422,7 +422,7 @@ Add a label to a flaw via the **v2 API** (`POST /osidb/api/v2/flaws/{id}/labels`
 
 ### `workflow_get` (enhanced)
 
-Use `verbose=True` and `next=True` to see all workflows with per-requirement acceptance booleans and what is needed for the next state. This matches what OSIM uses for its next-state requirements panel.
+Use `verbose=True` and `next=True` to see all workflows with per-requirement acceptance booleans and what is needed for the next state. Use `history=True` for classification change history with `reason`. This matches what OSIM uses for its next-state requirements panel.
 
 ---
 

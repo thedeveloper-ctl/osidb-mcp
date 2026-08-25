@@ -10,8 +10,9 @@ This document outlines threats and operational guidance for running **osidb-mcp*
 
 ## Access mode
 
-- **`OSIDB_MCP_ACCESS_MODE`:** Only **`readonly`** is accepted today (default). **`readwrite` is rejected at startup** until mutation MCP tools exist.
-- **Operational habit:** When read/write tools are added later, prefer **two separate MCP configurations** in the client (e.g. one `readonly`, one explicit write-capable server name/env) so write-capable servers are attached **only** when intentional.
+- **`OSIDB_MCP_ACCESS_MODE`:** `readonly` (default) or `readwrite`. Readwrite registers mutation tools against live OSIDB.
+- **`OSIDB_MCP_PROFILE`:** `full` (default), `lifecycle`, or `core`. Smaller profiles advertise fewer tools to the MCP client (token saving). They do not change OSIDB RBAC.
+- **Operational habit:** Prefer **two separate MCP configurations** in the client (e.g. one `readonly`, one explicit write-capable server name/env) so write-capable servers are attached **only** when intentional.
 
 ## OWASP Top 10–oriented controls (mapping)
 

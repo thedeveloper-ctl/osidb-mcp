@@ -1412,7 +1412,7 @@ def test_comment_create_api_error(mock_get_session: MagicMock) -> None:
 # ---------------------------------------------------------------------------
 
 def _jira_settings(**overrides):
-    from osidb_mcp.config import Settings, AccessMode
+    from osidb_mcp.config import Settings, AccessMode, Profile
 
     defaults = dict(
         base_url="https://osidb.example.com",
@@ -1422,6 +1422,8 @@ def _jira_settings(**overrides):
         verify_ssl=True,
         user_agent=None,
         access_mode=AccessMode.readwrite,
+        profile=Profile.full,
+        enable_exploits=False,
         jira_url="https://issues.redhat.com",
         jira_access_token="tok-123",
         jira_api_email="user@redhat.com",
@@ -1557,6 +1559,42 @@ def test_label_add_success(mock_get_session: MagicMock, mock_post: MagicMock) ->
 
     assert result["ok"] is True
     assert result["label"]["name"] == "triage"
+
+
+@patch("osidb_mcp.tools_write.requests.post")
+@patch("osidb_mcp.tools_write.get_session")
+def test_label_add_sends_reason(mock_get_session: MagicMock, mock_post: MagicMock) -> None:
+    session = mock_get_session.return_value
+    client = session.get_client_with_new_access_token.return_value
+    client.base_url = "https://osidb.example.com"
+    client.get_headers.return_value = {}
+    client.verify_ssl = True
+    client.get_auth.return_value = None
+    client.get_timeout.return_value = 300.0
+    post_resp = MagicMock()
+    post_resp.raise_for_status.return_value = None
+    post_resp.json.return_value = {"name": "approved", "reason": "ready"}
+    mock_post.return_value = post_resp
+
+    result = flaw_label_add(
+        flaw_id="aaa58a80-dd9c-43dd-ba19-61fa88a66714",
+        name="approved",
+        label_type="workflow",
+        reason="ready for DONE",
+    )
+
+    assert result["ok"] is True
+    assert mock_post.call_args.kwargs["json"]["reason"] == "ready for DONE"
+
+
+def test_label_add_rejects_product_family() -> None:
+    result = flaw_label_add(
+        flaw_id="aaa58a80-dd9c-43dd-ba19-61fa88a66714",
+        name="rhel",
+        label_type="product_family",
+    )
+    assert result["ok"] is False
+    assert result["error"] == "bad_request"
 
 
 def test_label_add_invalid_uuid() -> None:

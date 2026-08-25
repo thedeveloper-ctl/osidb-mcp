@@ -19,6 +19,7 @@ from osidb_mcp.tools_read import (
     flaw_label_get,
     flaw_package_version_get,
     flaw_reference_get,
+    get_flaw_details,
     tracker_suggestions,
     workflow_get,
     workflows_list,
@@ -361,6 +362,98 @@ def test_workflow_get_verbose(mock_raw: MagicMock) -> None:
     assert result["ok"] is True
     _, kwargs = mock_raw.call_args
     assert kwargs["verbose"] is True
+
+
+@patch("osidb_mcp.tools_read._raw_api_call")
+def test_workflow_get_history(mock_raw: MagicMock) -> None:
+    mock_raw.return_value = {"ok": True, "data": {"id": "DEFAULT", "history": []}}
+
+    result = workflow_get("DEFAULT", history=True)
+
+    assert result["ok"] is True
+    _, kwargs = mock_raw.call_args
+    assert kwargs["history"] is True
+
+
+@patch("osidb_mcp.tools_read.trackers_list")
+@patch("osidb_mcp.tools_read.affects_list")
+@patch("osidb_mcp.tools_read.flaw_get")
+def test_get_flaw_details_compact_default(
+    mock_flaw_get: MagicMock,
+    mock_affects: MagicMock,
+    mock_trackers: MagicMock,
+) -> None:
+    mock_flaw_get.return_value = {
+        "ok": True,
+        "flaw": {"uuid": "flaw-1", "cve_id": "CVE-2024-1", "title": "x"},
+    }
+    mock_affects.return_value = {
+        "ok": True,
+        "count": 1,
+        "results": [
+            {
+                "uuid": "aff-1",
+                "ps_module": "rhel-9",
+                "ps_component": "kernel",
+                "affectedness": "AFFECTED",
+                "resolution": "DELEGATED",
+                "embargoed": False,
+                "cvss_scores": [{"vector": "long"}],
+            }
+        ],
+    }
+    mock_trackers.return_value = {
+        "ok": True,
+        "count": 1,
+        "results": [
+            {
+                "uuid": "trk-1",
+                "type": "JIRA",
+                "external_system_id": "RHEL-1",
+                "status": "New",
+                "ps_update_stream": "rhel-9.4.0",
+                "meta_attr": {"huge": "payload"},
+            }
+        ],
+    }
+
+    result = get_flaw_details("CVE-2024-1")
+
+    assert result["ok"] is True
+    affect = result["affects"]["results"][0]
+    assert affect["ps_module"] == "rhel-9"
+    assert "cvss_scores" not in affect
+    tracker = result["trackers"]["results"][0]
+    assert tracker["external_system_id"] == "RHEL-1"
+    assert "meta_attr" not in tracker
+
+
+@patch("osidb_mcp.tools_read.trackers_list")
+@patch("osidb_mcp.tools_read.affects_list")
+@patch("osidb_mcp.tools_read.flaw_get")
+def test_get_flaw_details_compact_false_keeps_rows(
+    mock_flaw_get: MagicMock,
+    mock_affects: MagicMock,
+    mock_trackers: MagicMock,
+) -> None:
+    mock_flaw_get.return_value = {
+        "ok": True,
+        "flaw": {"uuid": "flaw-1", "cve_id": "CVE-2024-1"},
+    }
+    mock_affects.return_value = {
+        "ok": True,
+        "count": 1,
+        "results": [{"uuid": "aff-1", "cvss_scores": [1]}],
+    }
+    mock_trackers.return_value = {
+        "ok": True,
+        "count": 0,
+        "results": [],
+    }
+
+    result = get_flaw_details("CVE-2024-1", compact=False)
+
+    assert result["affects"]["results"][0]["cvss_scores"] == [1]
 
 
 # ---------------------------------------------------------------------------

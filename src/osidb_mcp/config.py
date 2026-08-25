@@ -19,6 +19,20 @@ class AccessMode(str, Enum):
     readwrite = "readwrite"
 
 
+class Profile(str, Enum):
+    """Which tools are advertised to the MCP client (token-saving).
+
+    ``full`` is the default and matches the historical complete catalog
+    (exploits on, AEGIS only when ``AEGIS_URL`` is set).
+    ``core`` is a small read-only triage set.
+    ``lifecycle`` is core plus the write tools used for vuln lifecycle work.
+    """
+
+    core = "core"
+    lifecycle = "lifecycle"
+    full = "full"
+
+
 def _env_bool(name: str, default: bool) -> bool:
     raw = os.environ.get(name)
     if raw is None or raw == "":
@@ -38,6 +52,22 @@ def _parse_access_mode() -> AccessMode:
     )
 
 
+def _parse_profile() -> Profile:
+    raw = (os.environ.get("OSIDB_MCP_PROFILE") or "full").strip().lower()
+    if raw in {p.value for p in Profile}:
+        return Profile(raw)
+    raise ValueError(
+        "OSIDB_MCP_PROFILE must be 'core', 'lifecycle', or 'full' (default: full). "
+        f"Got {raw!r}"
+    )
+
+
+def _parse_enable_exploits(profile: Profile) -> bool:
+    """Exploits tools: on by default only for ``full`` (backward compatible)."""
+    default = profile == Profile.full
+    return _env_bool("OSIDB_MCP_ENABLE_EXPLOITS", default)
+
+
 @dataclass(frozen=True)
 class Settings:
     base_url: str
@@ -51,6 +81,8 @@ class Settings:
     jira_access_token: str | None = None
     jira_api_email: str | None = None
     aegis_url: str | None = None
+    profile: Profile = Profile.full
+    enable_exploits: bool = False
 
 
 def load_settings() -> Settings:
@@ -82,6 +114,7 @@ def load_settings() -> Settings:
     jira_email = os.environ.get("JIRA_API_EMAIL", "").strip() or None
 
     aegis_url = os.environ.get("AEGIS_URL", "").strip() or None
+    profile = _parse_profile()
 
     return Settings(
         base_url=base,
@@ -95,4 +128,6 @@ def load_settings() -> Settings:
         jira_access_token=jira_token,
         jira_api_email=jira_email,
         aegis_url=aegis_url,
+        profile=profile,
+        enable_exploits=_parse_enable_exploits(profile),
     )

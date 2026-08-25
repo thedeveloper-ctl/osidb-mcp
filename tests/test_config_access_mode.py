@@ -26,8 +26,24 @@ def test_readwrite_accepted(monkeypatch):
     assert s.access_mode.value == "readwrite"
 
 
-def test_invalid_mode_rejected(monkeypatch):
+def test_default_profile_full(monkeypatch):
     monkeypatch.setenv("OSIDB_BASE_URL", "https://osidb.example.com")
-    monkeypatch.setenv("OSIDB_MCP_ACCESS_MODE", "bogus")
-    with pytest.raises(ValueError, match="bogus"):
+    monkeypatch.delenv("OSIDB_MCP_PROFILE", raising=False)
+    s = load_settings()
+    assert s.profile.value == "full"
+    assert s.enable_exploits is True
+
+
+def test_profile_core(monkeypatch):
+    monkeypatch.setenv("OSIDB_BASE_URL", "https://osidb.example.com")
+    monkeypatch.setenv("OSIDB_MCP_PROFILE", "core")
+    s = load_settings()
+    assert s.profile.value == "core"
+    assert s.enable_exploits is False
+
+
+def test_invalid_profile_rejected(monkeypatch):
+    monkeypatch.setenv("OSIDB_BASE_URL", "https://osidb.example.com")
+    monkeypatch.setenv("OSIDB_MCP_PROFILE", "tiny")
+    with pytest.raises(ValueError, match="tiny"):
         load_settings()

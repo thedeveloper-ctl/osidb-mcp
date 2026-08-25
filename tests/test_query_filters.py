@@ -8,7 +8,6 @@ from osidb_mcp.query_filters import (
     parse_dt,
 )
 from osidb_mcp.tools_read import (
-    _attach_flaw_list_identity_hint,
     _envelope_osidb_flaw_uuid_when_no_cve,
     _flaw_has_usable_cve_id,
     get_cve_summary,
@@ -105,6 +104,13 @@ def test_envelope_skips_when_cve_present():
     assert "osidb_flaw_uuid" not in out
 
 
-def test_attach_flaw_list_identity_hint():
-    out = _attach_flaw_list_identity_hint({"ok": True, "results": []})
-    assert "identifier_hint" in out
+def test_list_payload_has_no_identifier_hint():
+    from osidb_mcp.serialize import paginated_summary
+
+    class _Resp:
+        results = []
+        count = 0
+        next_ = None
+
+    out = {"ok": True, **paginated_summary(_Resp(), limit=20, offset=0)}
+    assert "identifier_hint" not in out

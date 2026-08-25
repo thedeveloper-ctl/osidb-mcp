@@ -120,7 +120,7 @@ def flaw_create(
         reported_dt: Date reported (ISO 8601, e.g. "2026-05-19T00:00:00Z").
         unembargo_dt: Planned unembargo date (ISO 8601).
         mitigation: Mitigation advice text.
-        owner: Flaw owner (Jira username for assignment, max 60 chars).
+        owner: Flaw owner (email address used by OSIM, max 60 chars).
         major_incident_state: Major incident state (e.g. REQUESTED, APPROVED, REJECTED).
         nist_cvss_validation: NIST CVSS validation status (REQUESTED, APPROVED, REJECTED, or empty).
         aegis_meta: AEGIS AI metadata dict for change tracking.
@@ -279,7 +279,7 @@ def flaw_update(
         reported_dt: Date reported (ISO 8601).
         unembargo_dt: Planned unembargo date (ISO 8601).
         mitigation: Mitigation advice.
-        owner: Flaw owner (Jira username for assignment).
+        owner: Flaw owner (email address used by OSIM).
         major_incident_state: Major incident state (e.g. REQUESTED, APPROVED).
         nist_cvss_validation: NIST CVSS validation status.
         aegis_meta: AEGIS AI metadata dict for change tracking.
@@ -1193,6 +1193,7 @@ def flaw_label_add(
     contributor: str | None = None,
     label_type: str | None = None,
     relevant: bool | None = None,
+    reason: str | None = None,
 ) -> dict[str, Any]:
     """Add a label to a flaw (POST /osidb/api/v2/flaws/{id}/labels).
 
@@ -1206,13 +1207,21 @@ def flaw_label_add(
         state: Label state (NEW, REQ, DONE, SKIP). Default NEW.
         contributor: Contributor name.
         label_type: Label type (alias, context_based, workflow, bu).
-            Required on create.
+            Required on create. ``product_family`` is read-only (system-assigned).
         relevant: Whether the label is relevant (optional).
+        reason: Optional human-readable reason (OSIDB-5346 workflow insights).
     """
     try:
         flaw_uuid = UUID(str(flaw_id).strip())
     except ValueError:
         return {"ok": False, "error": "bad_request", "detail": "flaw_id must be a UUID for label operations"}
+
+    if (label_type or "").strip().lower() == "product_family":
+        return {
+            "ok": False,
+            "error": "bad_request",
+            "detail": "product_family labels are read-only (system-assigned)",
+        }
 
     body: dict[str, Any] = {"name": name}
     if state is not None:
@@ -1223,6 +1232,8 @@ def flaw_label_add(
         body["type"] = label_type
     if relevant is not None:
         body["relevant"] = relevant
+    if reason is not None:
+        body["reason"] = reason
 
     session = get_session()
     client = session.get_client_with_new_access_token()
@@ -1249,6 +1260,7 @@ def flaw_label_update(
     contributor: str | None = None,
     label_type: str | None = None,
     relevant: bool | None = None,
+    reason: str | None = None,
 ) -> dict[str, Any]:
     """Update a label on a flaw (PUT /osidb/api/v2/flaws/{id}/labels/{id}).
 
@@ -1261,12 +1273,21 @@ def flaw_label_update(
         state: Label state (NEW, REQ, DONE, SKIP).
         contributor: Contributor name.
         label_type: Label type (alias, context_based, workflow, bu).
+            ``product_family`` is read-only.
         relevant: Whether the label is relevant.
+        reason: Optional human-readable reason (OSIDB-5346).
     """
     try:
         flaw_uuid = UUID(str(flaw_id).strip())
     except ValueError:
         return {"ok": False, "error": "bad_request", "detail": "flaw_id must be a UUID for label operations"}
+
+    if (label_type or "").strip().lower() == "product_family":
+        return {
+            "ok": False,
+            "error": "bad_request",
+            "detail": "product_family labels are read-only (system-assigned)",
+        }
 
     session = get_session()
     client = session.get_client_with_new_access_token()
@@ -1285,7 +1306,7 @@ def flaw_label_update(
         return _error_response(exc)
 
     data: dict[str, Any] = {}
-    for field in ("name", "state", "contributor", "type", "relevant"):
+    for field in ("name", "state", "contributor", "type", "relevant", "reason"):
         val = current.get(field)
         if val is not None:
             data[field] = val
@@ -1299,6 +1320,8 @@ def flaw_label_update(
         data["type"] = label_type
     if relevant is not None:
         data["relevant"] = relevant
+    if reason is not None:
+        data["reason"] = reason
 
     try:
         resp = requests.put(

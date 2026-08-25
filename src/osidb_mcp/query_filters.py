@@ -36,7 +36,7 @@ TRACKERS_QUERY_PARAM_TYPES = _trackers_list_mod.QUERY_PARAMS
 EXTRAS_MAX_KEYS = 30
 EXTRAS_MAX_LIST_LEN = 100
 LIST_LIMIT_MAX = 100
-DEFAULT_LIST_LIMIT = 50
+DEFAULT_LIST_LIMIT = 20
 
 
 def parse_dt(value: str) -> datetime.datetime:

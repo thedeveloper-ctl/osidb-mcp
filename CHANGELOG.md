@@ -1,3 +1,14 @@
+# Changelog
+
+## 0.4.0
+
+- **Tool profiles:** `OSIDB_MCP_PROFILE` is `core`, `lifecycle`, or `full` (default `full`, same catalog as before). `core` advertises 12 triage read tools. `lifecycle` adds the write tools used for vuln lifecycle work. Set this in Cursor `mcp.json` env to cut idle MCP tool-name tokens.
+- **Exploits tools:** Registered for `full` by default. Use `OSIDB_MCP_ENABLE_EXPLOITS=true` to enable them on a smaller profile.
+- **AEGIS tools:** Still registered only when `AEGIS_URL` is set.
+- **Compact payloads:** Default list `limit` is 20 (still capped at 100). Flaw list tools default to a short `include_fields` set. `get_flaw_details` returns compact affect/tracker rows (`compact=true`). Oversized JSON is truncated at 64 KiB.
+- **OSIDB 5.16:** `search_flaws` / `flaws_list` accept `flaw_labels`. `workflow_get` supports `history=true`. Label add/update accept optional `reason`. `product_family` labels are rejected as read-only. `owner` docs use email (OSIM), not Jira username.
+- **Dropped `identifier_hint`** from list/search payloads (uuid is already on each row).
+
 ## 0.3.0
 
 - **Labels v2 API migration:** Label CRUD operations (`flaw_label_add`, `flaw_label_update`, `flaw_label_remove`, `flaw_labels_list`, `flaw_label_get`) now use the OSIDB v2 labels API (`/osidb/api/v2/flaws/{id}/labels`) instead of the deprecated v1 endpoints. The `label` parameter on `flaw_label_add` is renamed to `name` to match the v2 schema.

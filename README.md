@@ -20,6 +20,9 @@ uv pip install -e .
 | `OSIDB_VERIFY_SSL` | no | `true` (default) or `false` (prefer `REQUESTS_CA_BUNDLE` for custom CAs) |
 | `OSIDB_USER_AGENT` | no | Optional extra User-Agent suffix |
 | `OSIDB_MCP_ACCESS_MODE` | no | `readonly` (default) or `readwrite`. Readwrite mode registers mutation tools (flaw create/update, affects, acknowledgments, references). |
+| `OSIDB_MCP_PROFILE` | no | `full` (default, complete catalog), `lifecycle` (triage reads + lifecycle writes), or `core` (12 triage read tools). Use `lifecycle` or `core` in Cursor to cut tool-name tokens. |
+| `OSIDB_MCP_ENABLE_EXPLOITS` | no | Exploits tools are on by default only for `full`. Set `true` to enable them on `core` / `lifecycle`. |
+| `AEGIS_URL` | no | When set, registers AEGIS analysis tools. |
 
 Kerberos: the process must have a valid ticket (`kinit`) for the OSIDB HTTP service.
 
@@ -36,12 +39,15 @@ Optional keys forwarded by bindings: `BUGZILLA_API_KEY`, `JIRA_ACCESS_TOKEN`, `J
         "OSIDB_BASE_URL": "https://your-internal-osidb",
         "OSIDB_AUTH": "kerberos",
         "OSIDB_VERIFY_SSL": "true",
-        "OSIDB_MCP_ACCESS_MODE": "readonly"
+        "OSIDB_MCP_ACCESS_MODE": "readwrite",
+        "OSIDB_MCP_PROFILE": "lifecycle"
       }
     }
   }
 }
 ```
+
+Default is `OSIDB_MCP_PROFILE=full` with `readonly`. The snippet above is the token-saving write setup: fewer advertised tools, mutations still available.
 
 ## Tools
 
@@ -54,12 +60,12 @@ All **MCP tools** require a working OSIDB session (env + Kerberos or basic auth)
 | `osidb_status` | OSIDB API health / status payload (good connectivity check). |
 | `osidb_whoami` | Current authenticated user / profile from `GET /osidb/whoami`. |
 | `flaw_get` | One flaw by CVE id or internal **`uuid`**; optional `include_fields` / `exclude_fields`. Adds **`osidb_flaw_uuid`** at top level when there is no CVE yet. |
-| `search_flaws` | High-level search: keyword and/or CVE ids, severity (`severity` / `severities`), changed-date range (`date_from` / `date_to`), PS `product_modules` / `product_components`, workflow, embargo, owner; keyword-only uses OSIDB full-text search. |
-| `get_flaw_details` | Full flaw plus **affects** and **trackers**; `flaw_id` is CVE or **`uuid`**. If no CVE, nested lists use **`flaw__uuid`** / **`affects__flaw__uuid`**. |
+| `search_flaws` | High-level search: keyword and/or CVE ids, severity (`severity` / `severities`), changed-date range (`date_from` / `date_to`), PS `product_modules` / `product_components`, workflow, `flaw_labels`, embargo, owner; keyword-only uses OSIDB full-text search. |
+| `get_flaw_details` | Full flaw plus **affects** and **trackers**; `flaw_id` is CVE or **`uuid`**. `compact=true` (default) returns short affect/tracker rows. If no CVE, nested lists use **`flaw__uuid`** / **`affects__flaw__uuid`**. |
 | `get_cve_summary` | Executive rollups: counts **by severity** and **by workflow** plus total under shared filters (`group_by`: `severity` \| `workflow` \| `both`); multiple `flaws_count` calls; see `partial_errors` if a bucket fails. |
-| `flaws_list` | Raw list API: components, nested affects filters (`affects_ps_*`), workflow, impact, owner, embargo, dates, `search`, allowlisted `extra_query` (OSIDB v2 query keys); `limit` ≤ 100. Success responses include **`identifier_hint`** (CVE vs `uuid`). |
+| `flaws_list` | Raw list API: components, nested affects filters (`affects_ps_*`), workflow, impact, owner, embargo, dates, `search`, `flaw_labels`, allowlisted `extra_query` (OSIDB v2 query keys); default `limit` 20, max 100. Default `include_fields` is a short triage set. |
 | `flaws_count` | Same filter surface as `flaws_list` but returns **count** only (no flaw bodies). |
-| `flaws_search` | Full-text search over flaws (`search` parameter); paginated like list APIs. Success responses include **`identifier_hint`**. |
+| `flaws_search` | Full-text search over flaws (`search` parameter); paginated like list APIs. |
 | `affects_list` | Rows keyed by **affect** with `flaw__*` filters; scope flaw by **`flaw_cve_id`** / **`flaw_cve_id_in`** or **`flaw_uuid`** / **`flaw_uuid_in`** when there is no CVE. |
 | `trackers_list` | Tracker filings; scope by **`affects_flaw_cve_id`** (or `_in`) or **`affects_flaw_uuid`** (or `_in`) when there is no CVE; optional PS filters and `tracker_type`. |
 | `flaw_comments_list` | Paginated **discussion comments** for a flaw id. |
@@ -87,7 +93,7 @@ These tools are only registered when `OSIDB_MCP_ACCESS_MODE=readwrite`.
 | Tool | Purpose |
 |------|---------|
 | **Flaw CRUD** | |
-| `flaw_create` | Create a new flaw with optional sub-resources (acknowledgments, references, CVSS). Supports `owner` and `nist_cvss_validation`. |
+| `flaw_create` | Create a new flaw with optional sub-resources (acknowledgments, references, CVSS). Supports `owner` (email) and `nist_cvss_validation`. |
 | `flaw_update` | Update fields on an existing flaw. Auto-fetches `updated_dt` for optimistic concurrency. Supports `create_jira_task`. |
 | **Affects** | |
 | `affect_add` | Add one or more affects to a flaw. Auto-injects `flaw` UUID and `embargoed`. |
@@ -109,8 +115,8 @@ These tools are only registered when `OSIDB_MCP_ACCESS_MODE=readwrite`.
 | `affect_cvss_update` | Update a CVSS score on an affect. |
 | `affect_cvss_remove` | Delete a CVSS score from an affect. |
 | **Labels (v2 API)** | |
-| `flaw_label_add` | Add a label to a flaw (v2 API). Supports `workflow` type for state transitions. |
-| `flaw_label_update` | Update a label on a flaw (v2 API). |
+| `flaw_label_add` | Add a label to a flaw (v2 API). Supports `workflow` type for state transitions. Optional `reason`. `product_family` is read-only. |
+| `flaw_label_update` | Update a label on a flaw (v2 API). Optional `reason`. |
 | `flaw_label_remove` | Remove a label from a flaw (v2 API). |
 | **Sub-resources** | |
 | `flaw_acknowledgment_add` | Add acknowledgment(s) to a flaw. |
@@ -130,9 +136,11 @@ All write tools return `{"ok": true, ...}` on success. On partial failure (e.g. 
 
 Workflow state is **auto-classified** based on flaw data completeness. No manual promote/reject actions are needed.
 
-**State progression:** `NEW` -> `TRIAGE` -> `ANALYSIS` -> `PRE_SECONDARY_ASSESSMENT` -> `SECONDARY_ASSESSMENT` -> `DONE`
+**Workflows:** `DEFAULT`, `MANUAL`, `EMBARGOED`, `REJECTED`. `MANUAL` and `EMBARGOED` skip `ANALYSIS`.
 
-Each transition happens automatically when the flaw's data satisfies the state's requirements. Use `workflow_get(flaw_id, verbose=True, next=True)` to inspect requirements.
+**State progression (DEFAULT):** `NEW` -> `TRIAGE` -> `ANALYSIS` -> `PRE_SECONDARY_ASSESSMENT` -> `SECONDARY_ASSESSMENT` -> `DONE`
+
+Each transition happens automatically when the flaw's data satisfies the state's requirements. Use `workflow_get(flaw_id, verbose=True, next=True)` to inspect requirements. Use `history=true` for classification change history.
 
 - **To approve (reach DONE):** `flaw_label_add(name='approved', label_type='workflow')`
 - **To reject:** `flaw_label_add(name='rejected', label_type='workflow')` (auto-classifies into `REJECTED:DONE`)
@@ -147,7 +155,7 @@ Each transition happens automatically when the flaw's data satisfies the state's
 
 OSIDB flaws always have an internal **`uuid`**. A **`cve_id`** may be missing until one is assigned — that is normal, not “no identifier.”
 
-- List/search responses include each flaw’s **`uuid`** in JSON. **`flaws_list`**, **`flaws_search`**, and **`search_flaws`** (structured path) also return an **`identifier_hint`** string for agents.
+- List/search responses include each flaw’s **`uuid`** in JSON. Use that **`uuid`** as `flaw_id` when there is no CVE.
 - **`flaw_get`** / **`get_flaw_details`**: when there is no usable CVE string, the tool adds top-level **`osidb_flaw_uuid`** (same value as `flaw.uuid`) so follow-up calls are obvious.
 - **`get_flaw_details`**: if `cve_id` is empty, affects and trackers are loaded using **`flaw__uuid`** / **`affects__flaw__uuid`** automatically.
 - **`affects_list`** / **`query_affects`**: use **`flaw_uuid`** / **`flaw_uuid_in`** to scope rows when there is no CVE. **`trackers_list`**: use **`affects_flaw_uuid`** / **`affects_flaw_uuid_in`**.
@@ -167,7 +175,7 @@ These tools return **structured JSON** (sometimes large). The **MCP host** (Curs
 - **Good default:** A **mid-tier** model (e.g. Sonnet-class) is usually enough for reliable tool names, filters, and reading nested flaw / affect / tracker data.
 - **Smaller / cheaper models:** Reasonable for **narrow** tasks (one CVE, a known tool, counts only). Tight prompts help; ambiguous multi-step triage may need more retries or a larger model.
 - **Largest models:** Optional when the task is **underspecified** or you need unusually careful synthesis; for routine read-only chains they are **often more than needed**.
-- **Saving tokens:** Use **`include_fields` / `exclude_fields`** where supported; prefer **`flaws_count`** or **`get_cve_summary`** over pulling many full list pages; keep **`limit`** modest; ask the agent to **summarize** instead of echoing entire tool payloads unless you are debugging.
+- **Saving tokens:** Set **`OSIDB_MCP_PROFILE=lifecycle`** (or `core`) so Cursor does not inject unused tool names. Use **`include_fields` / `exclude_fields`** where supported; prefer **`flaws_count`** or **`get_cve_summary`** over pulling many full list pages; keep **`limit`** modest; ask the agent to **summarize** instead of echoing entire tool payloads unless you are debugging.
 
 ## Security
 

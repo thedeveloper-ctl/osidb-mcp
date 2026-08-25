@@ -69,7 +69,11 @@ def main() -> None:
 
     configure(settings)
 
-    log.info("osidb-mcp access mode: %s", settings.access_mode.value)
+    log.info(
+        "osidb-mcp access mode: %s profile: %s",
+        settings.access_mode.value,
+        settings.profile.value,
+    )
 
     mcp = create_server(settings)
     mcp.run(transport="stdio")

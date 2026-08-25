@@ -4,10 +4,65 @@ from __future__ import annotations
 
 from mcp.server.fastmcp import FastMCP
 
-from osidb_mcp.config import AccessMode, Settings
+from osidb_mcp.config import AccessMode, Profile, Settings
 from osidb_mcp import tools_aegis
 from osidb_mcp import tools_diagnostic
 from osidb_mcp import tools_read
+
+
+CORE_READ_TOOLS = frozenset(
+    {
+        "osidb_status",
+        "osidb_whoami",
+        "search_flaws",
+        "get_flaw_details",
+        "get_cve_summary",
+        "flaw_get",
+        "affects_list",
+        "trackers_list",
+        "tracker_suggestions",
+        "workflow_get",
+        "flaw_workflow_diagnostic",
+        "flaws_count",
+    }
+)
+LIFECYCLE_WRITE_TOOLS = frozenset(
+    {
+        "flaw_create",
+        "flaw_update",
+        "affect_add",
+        "affect_update",
+        "affect_update_bulk",
+        "affect_remove",
+        "tracker_create",
+        "trackers_bulk_file",
+        "tracker_update",
+        "flaw_label_add",
+        "flaw_label_update",
+        "flaw_label_remove",
+        "flaw_comment_create",
+        "flaw_cvss_add",
+        "flaw_cvss_update",
+    }
+)
+AEGIS_TOOLS = frozenset(
+    {
+        "aegis_get_cve_analysis",
+        "aegis_run_cve_analysis",
+        "aegis_get_component_analysis",
+        "aegis_get_kpi_metrics",
+    }
+)
+EXPLOIT_TOOLS = frozenset(
+    {
+        "exploits_epss",
+        "exploits_cve_map",
+        "exploits_report_date",
+        "exploits_report_explanations",
+        "exploits_flaw_data",
+        "get_pending_exploit_actions",
+    }
+)
 
 
 _READONLY_INSTRUCTIONS = """\
@@ -30,10 +85,53 @@ all read-only tools. Write operations contact OSIDB and create real data; treat 
 """
 
 
+def should_register_tool(name: str, settings: Settings, is_readwrite: bool) -> bool:
+    profile = settings.profile
+    if name in CORE_READ_TOOLS:
+        return True
+    if name in LIFECYCLE_WRITE_TOOLS:
+        return is_readwrite and profile in (Profile.lifecycle, Profile.full)
+    if name in AEGIS_TOOLS:
+        return bool(settings.aegis_url)
+    if name in EXPLOIT_TOOLS:
+        return profile is Profile.full or settings.enable_exploits
+    return profile is Profile.full
+
+
+def registered_tool_names(mcp: FastMCP) -> set[str]:
+    tm = mcp._tool_manager
+    tools = getattr(tm, "_tools", None)
+    if isinstance(tools, dict):
+        return set(tools)
+    listed = tm.list_tools() if hasattr(tm, "list_tools") else []
+    names: set[str] = set()
+    for item in listed:
+        n = getattr(item, "name", None)
+        if n:
+            names.add(n)
+    return names
+
+
+class _ProfileGate:
+    def __init__(self, inner: FastMCP, settings: Settings, is_readwrite: bool) -> None:
+        self._inner = inner
+        self._settings = settings
+        self._is_readwrite = is_readwrite
+
+    def tool(self, name: str, description: str):
+        def decorator(fn):
+            if should_register_tool(name, self._settings, self._is_readwrite):
+                return self._inner.tool(name=name, description=description)(fn)
+            return fn
+
+        return decorator
+
+
 def create_server(settings: Settings) -> FastMCP:
     is_readwrite = settings.access_mode == AccessMode.readwrite
     instructions = _READWRITE_INSTRUCTIONS if is_readwrite else _READONLY_INSTRUCTIONS
-    mcp = FastMCP("osidb-mcp", instructions=instructions)
+    inner = FastMCP("osidb-mcp", instructions=instructions)
+    mcp = _ProfileGate(inner, settings, is_readwrite)
 
     mcp.tool(name="osidb_status", description="OSIDB API health / status payload.")(
         tools_read.osidb_status
@@ -53,7 +151,7 @@ def create_server(settings: Settings) -> FastMCP:
         name="search_flaws",
         description=(
             "Search CVEs/flaws by keyword, CVE id(s), severity (impact), changed date range, "
-            "PS product modules or components, workflow, major incident state, embargo, and owner. "
+            "PS product modules or components, workflow, labels (``flaw_labels``), major incident state, embargo, and owner. "
             "Keyword-only queries use OSIDB full-text search; structured filters use list APIs. "
             "Also supports ``query`` parameter for OSIM-compatible filter expressions using operators: "
             "``=`` (equals), ``!=`` (not equals), ``~`` (contains), ``and``, ``or``, ``()`` (grouping). "
@@ -64,8 +162,8 @@ def create_server(settings: Settings) -> FastMCP:
         name="get_flaw_details",
         description=(
             "Full flaw payload plus affects and trackers (Jira/Bugzilla filings) for one flaw. "
-            "``flaw_id`` may be a CVE string or internal ``uuid``. If the flaw has no CVE yet, nested lists "
-            "are queried via ``flaw__uuid`` / ``affects__flaw__uuid`` automatically."
+            "``flaw_id`` may be a CVE string or internal ``uuid``. compact=true (default) returns short affect/tracker rows. "
+            "If the flaw has no CVE yet, nested lists are queried via ``flaw__uuid`` / ``affects__flaw__uuid`` automatically."
         ),
     )(tools_read.get_flaw_details)
     mcp.tool(
@@ -85,7 +183,7 @@ def create_server(settings: Settings) -> FastMCP:
             "``=`` (equals), ``!=`` (not equals), ``~`` (contains), ``and``, ``or``, and ``()`` for grouping. "
             "Fields usable in query: workflow_state, impact, owner, title, cve_id, embargoed, source, etc. "
             "Optional ``extra_query`` must use OSIDB v2 list query keys (allowlisted). "
-            "limit is capped at 100. Successful responses include ``identifier_hint`` for CVE vs uuid handling."
+            "limit is capped at 100. Use each row's ``uuid`` when ``cve_id`` is empty."
         ),
     )(tools_read.flaws_list)
     mcp.tool(
@@ -99,7 +197,7 @@ def create_server(settings: Settings) -> FastMCP:
         name="flaws_search",
         description=(
             "Full-text search flaws (maps to OSIDB search parameter). "
-            "Successful responses include ``identifier_hint`` for CVE vs uuid handling."
+            "Use each row's ``uuid`` when ``cve_id`` is empty."
         ),
     )(tools_read.flaws_search)
     mcp.tool(
@@ -265,7 +363,8 @@ def create_server(settings: Settings) -> FastMCP:
             "Get workflow classification for a flaw (by UUID or CVE) or a workflow definition. "
             "Use verbose=true for all workflows with per-requirement acceptance booleans. "
             "Use next=true to see what requirements must be met to advance to the next state. "
-            "Combine both for full diagnostic output (matches what OSIM uses)."
+            "Use ``history=true`` for classification change history with reason (OSIDB-5346). "
+            "Combine verbose and next for full diagnostic output (matches what OSIM uses)."
         ),
     )(tools_read.workflow_get)
     mcp.tool(
@@ -371,7 +470,7 @@ def create_server(settings: Settings) -> FastMCP:
                 "in a single composite operation. The flaw is created first via POST /osidb/api/v2/flaws, then "
                 "each sub-resource is created sequentially via v1 endpoints. Returns the flaw uuid and all "
                 "created sub-resource uuids. Supports partial-success reporting if the flaw was created but "
-                "a sub-resource call failed. Supports ``owner`` (Jira username for immediate assignment) "
+                "a sub-resource call failed. Supports ``owner`` (email address used by OSIM) "
                 "and ``nist_cvss_validation`` on creation."
             ),
         )(tools_write.flaw_create)
@@ -539,7 +638,7 @@ def create_server(settings: Settings) -> FastMCP:
                 "contributor, relevant (bool). "
                 "To reach DONE workflow state on OSIDB >= 5.12, add a label named "
                 "'approved' with label_type='workflow'. To reject, add 'rejected' with "
-                "label_type='workflow'."
+                "label_type='workflow'. Optional ``reason``. ``product_family`` is read-only."
             ),
         )(tools_write.flaw_label_add)
 
@@ -682,4 +781,4 @@ def create_server(settings: Settings) -> FastMCP:
             ),
         )(tools_write.affect_cvss_remove)
 
-    return mcp
+    return inner
