@@ -418,17 +418,6 @@ def create_server(settings: Settings) -> FastMCP:
         ),
     )(tools_diagnostic.flaw_workflow_diagnostic)
 
-    if is_readwrite:
-        mcp.tool(
-            name="flaw_create_tracking_ticket",
-            description=(
-                "Create a Jira tracking ticket for a legacy flaw with no task_key. "
-                "For flaws created before OSIDB-Jira sync. Creates an audit/tracking issue "
-                "in the specified project (default OSIM). Does NOT link back to OSIDB task_key. "
-                "To trigger native OSIDB Jira task creation, use flaw_update(create_jira_task=True) instead."
-            ),
-        )(tools_diagnostic.flaw_create_tracking_ticket)
-
     # -- AEGIS AI-assisted analysis tools --
     mcp.tool(
         name="aegis_get_cve_analysis",

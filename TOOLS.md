@@ -412,6 +412,10 @@ The following tools are only registered when `OSIDB_MCP_ACCESS_MODE=readwrite`. 
 
 Create a new OSIDB flaw with optional sub-resources. Supports `owner` (email address used by OSIM) and `nist_cvss_validation`.
 
+### `flaw_update`
+
+Set `create_jira_task=true` to ask OSIDB to create the flaw's native OSIM Jira task. OSIDB chooses the issue type and priority and records the issue key in `task_key` when creation succeeds. If server-side Jira sync is asynchronous, the update response can have an empty `task_key`; fetch the flaw again to check whether creation finished. A successful update alone does not confirm Jira task creation.
+
 ### `flaw_label_add`
 
 Add a label to a flaw via the **v2 API** (`POST /osidb/api/v2/flaws/{id}/labels`). The `name` parameter is the label name; `label_type` is required on create (`alias`, `context_based`, `workflow`, `bu`). Optional `reason` (OSIDB 5.16). `product_family` labels are read-only and rejected.

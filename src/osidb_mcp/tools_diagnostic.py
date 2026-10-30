@@ -1,4 +1,4 @@
-"""Composite diagnostic and tracking tools for flaw workflow advancement."""
+"""Composite diagnostic tools for flaw workflow advancement."""
 
 from __future__ import annotations
 
@@ -8,15 +8,7 @@ import requests
 
 from osidb_mcp.errors import http_error_payload
 from osidb_mcp.serialize import to_jsonable
-from osidb_mcp.session_holder import current_settings, get_session
-
-
-_IMPACT_PRIORITY_MAP: dict[str, str] = {
-    "CRITICAL": "Critical",
-    "IMPORTANT": "High",
-    "MODERATE": "Medium",
-    "LOW": "Low",
-}
+from osidb_mcp.session_holder import get_session
 
 _REQUIRED_FIELDS_NEW_TO_TRIAGE = (
     "components", "cwe_id", "impact", "reported_dt", "source", "title",
@@ -155,8 +147,7 @@ def flaw_workflow_diagnostic(
     - Affect analysis (resolved vs unresolved, tracker gaps)
     - Alert summary (blocking errors)
     - Next-state requirements (satisfied/unsatisfied)
-    - Whether a Jira tracking ticket exists
-    - Suggested priority for Jira ticket creation
+    - Whether a native Jira task exists
 
     Args:
         flaw_id: Flaw CVE id or internal OSIDB UUID (required).
@@ -251,8 +242,6 @@ def flaw_workflow_diagnostic(
         workflow_info = {"error": workflow_result.get("error", "Failed to fetch workflow")}
 
     task_key = flaw_data.get("task_key", "")
-    impact = flaw_data.get("impact", "")
-
     diagnostic: dict[str, Any] = {
         "ok": True,
         "flaw_uuid": flaw_uuid,
@@ -267,7 +256,6 @@ def flaw_workflow_diagnostic(
         "next_state_requirements": next_state_requirements if next_state_requirements else None,
         "has_jira_task": bool(task_key),
         "task_key": task_key or None,
-        "suggested_jira_priority": _IMPACT_PRIORITY_MAP.get(impact, "Medium"),
     }
 
     if affect_alerts_summary:
@@ -283,155 +271,3 @@ def flaw_workflow_diagnostic(
     }
 
     return diagnostic
-
-
-def flaw_create_tracking_ticket(
-    flaw_id: str,
-    project: str = "OSIM",
-    *,
-    issue_type: str = "Task",
-    labels: list[str] | None = None,
-    assignee: str | None = None,
-    extra_description: str | None = None,
-) -> dict[str, Any]:
-    """Create a Jira tracking ticket for a flaw that has no task_key.
-
-    For legacy flaws created before OSIDB-Jira sync was set up, this creates
-    a Jira issue for tracking/audit purposes. Note: this does NOT link the
-    ticket back to OSIDB's task_key (that requires OSIDB's native sync).
-
-    To trigger OSIDB's native Jira task creation instead, use
-    ``flaw_update(flaw_id, create_jira_task=True)``.
-
-    Args:
-        flaw_id: Flaw CVE id or internal OSIDB UUID (required).
-        project: Jira project key (default "OSIM").
-        issue_type: Jira issue type (default "Task").
-        labels: Labels to apply to the Jira ticket.
-            Default: ["legacy-cleanup"].
-        assignee: Jira username to assign. If None, no assignment.
-        extra_description: Additional text to append to the ticket description.
-    """
-    settings = current_settings()
-
-    missing_cfg: list[str] = []
-    if not settings.jira_url:
-        missing_cfg.append("JIRA_URL")
-    if not settings.jira_access_token:
-        missing_cfg.append("JIRA_ACCESS_TOKEN")
-    if not settings.jira_api_email:
-        missing_cfg.append("JIRA_API_EMAIL")
-    if missing_cfg:
-        return {
-            "ok": False,
-            "error": "jira_not_configured",
-            "detail": f"Missing env vars: {', '.join(missing_cfg)}",
-        }
-
-    session = get_session()
-
-    try:
-        flaw = session.flaws.retrieve(flaw_id)
-        flaw_data = to_jsonable(flaw)
-    except Exception as exc:
-        return _error_response(exc)
-
-    task_key = flaw_data.get("task_key", "")
-    if task_key:
-        return {
-            "ok": False,
-            "error": "task_key_exists",
-            "detail": f"Flaw already has a Jira task: {task_key}. "
-                      "Use flaw_update(create_jira_task=True) to recreate, "
-                      "or work directly with the existing ticket.",
-            "task_key": task_key,
-        }
-
-    flaw_uuid = flaw_data.get("uuid", flaw_id)
-    cve_id = flaw_data.get("cve_id") or "NO-CVE"
-    title = flaw_data.get("title", "")
-    impact = flaw_data.get("impact", "")
-    components = flaw_data.get("components", [])
-    workflow_state = flaw_data.get("classification", {}).get("state", "UNKNOWN")
-    created_dt = flaw_data.get("created_dt", "")
-
-    summary = f"[{cve_id}] {title}"
-    if len(summary) > 255:
-        summary = summary[:252] + "..."
-
-    osim_link = f"https://osim.prodsec.redhat.com/flaws/{flaw_uuid}"
-    component_str = ", ".join(components) if components else "N/A"
-
-    description_parts = [
-        f"OSIDB flaw cleanup / tracking ticket",
-        f"",
-        f"Flaw UUID: {flaw_uuid}",
-        f"CVE: {cve_id}",
-        f"Component: {component_str}",
-        f"Impact: {impact or 'NOT SET'}",
-        f"Workflow State: {workflow_state}",
-        f"Created: {created_dt}",
-        f"OSIM Link: {osim_link}",
-    ]
-    if extra_description:
-        description_parts.append(f"\n{extra_description}")
-
-    description = "\n".join(description_parts)
-
-    if labels is None:
-        labels = ["legacy-cleanup"]
-
-    priority = _IMPACT_PRIORITY_MAP.get(impact, "Medium")
-
-    jira_payload: dict[str, Any] = {
-        "fields": {
-            "project": {"key": project},
-            "issuetype": {"name": issue_type},
-            "summary": summary,
-            "description": {
-                "type": "doc",
-                "version": 1,
-                "content": [
-                    {
-                        "type": "paragraph",
-                        "content": [{"type": "text", "text": description}],
-                    }
-                ],
-            },
-            "priority": {"name": priority},
-            "labels": labels,
-        }
-    }
-
-    if assignee:
-        jira_payload["fields"]["assignee"] = {"name": assignee}
-
-    url = f"{settings.jira_url.rstrip('/')}/rest/api/3/issue"
-    headers = {"Content-Type": "application/json"}
-    auth = (settings.jira_api_email, settings.jira_access_token)
-
-    try:
-        import certifi
-        ca_bundle = certifi.where()
-    except ImportError:
-        ca_bundle = True  # type: ignore[assignment]
-
-    try:
-        resp = requests.post(
-            url, json=jira_payload, headers=headers, auth=auth,
-            timeout=30, verify=ca_bundle,
-        )
-        resp.raise_for_status()
-        data = resp.json()
-        return {
-            "ok": True,
-            "ticket_key": data.get("key"),
-            "ticket_id": data.get("id"),
-            "ticket_url": f"{settings.jira_url.rstrip('/')}/browse/{data.get('key')}",
-            "flaw_uuid": flaw_uuid,
-            "cve_id": cve_id,
-            "note": "This ticket is for tracking only. It is NOT linked to OSIDB task_key. "
-                    "To create the native OSIDB link, use flaw_update(flaw_id, create_jira_task=True).",
-        }
-    except Exception as exc:
-        return _error_response(exc)

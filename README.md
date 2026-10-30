@@ -94,7 +94,7 @@ These tools are only registered when `OSIDB_MCP_ACCESS_MODE=readwrite`.
 |------|---------|
 | **Flaw CRUD** | |
 | `flaw_create` | Create a new flaw with optional sub-resources (acknowledgments, references, CVSS). Supports `owner` (email) and `nist_cvss_validation`. |
-| `flaw_update` | Update fields on an existing flaw. Auto-fetches `updated_dt` for optimistic concurrency. Supports `create_jira_task`. |
+| `flaw_update` | Update fields on an existing flaw. Auto-fetches `updated_dt` for optimistic concurrency. Set `create_jira_task=true` to request the native OSIDB-linked Jira task. |
 | **Affects** | |
 | `affect_add` | Add one or more affects to a flaw. Auto-injects `flaw` UUID and `embargoed`. |
 | `affect_remove` | Remove one or more affects by UUID. |
