@@ -47,6 +47,18 @@ def _error_response(exc: BaseException) -> dict[str, Any]:
     return {"ok": False, "error": "osidb_error", "detail": str(exc)}
 
 
+def _normalize_acknowledgment(item: dict[str, Any]) -> None:
+    """Fill OSIDB 5.21 required acknowledgment fields.
+
+    ``affiliation`` may be blank but must be present. ``from_upstream`` has
+    no model default. OSIM sends ``""`` and ``false``.
+    """
+    if item.get("affiliation") is None:
+        item["affiliation"] = ""
+    if item.get("from_upstream") is None:
+        item["from_upstream"] = False
+
+
 def _create_subresources(
     resource_group: Any,
     flaw_id: str,
@@ -66,6 +78,8 @@ def _create_subresources(
     created: list[dict[str, Any]] = []
     errors: list[dict[str, Any]] = []
     for i, item in enumerate(items):
+        if label == "acknowledgment":
+            _normalize_acknowledgment(item)
         item["embargoed"] = embargoed
         try:
             kwargs: dict[str, Any] = {}
@@ -124,8 +138,9 @@ def flaw_create(
         major_incident_state: Major incident state (e.g. REQUESTED, APPROVED, REJECTED).
         nist_cvss_validation: NIST CVSS validation status (REQUESTED, APPROVED, REJECTED, or empty).
         aegis_meta: AEGIS AI metadata dict for change tracking.
-        acknowledgments: List of dicts, each with ``name`` (str), optional ``affiliation`` (str),
-            optional ``from_upstream`` (bool, default false).
+        acknowledgments: List of dicts, each with ``name`` (str). ``affiliation``
+            defaults to ``""`` and ``from_upstream`` defaults to false. OSIDB 5.21
+            requires both on POST.
         references: List of dicts, each with ``url`` (str), optional ``description`` (str),
             optional ``type`` (ARTICLE, UPSTREAM, or EXTERNAL).
         cvss_scores: List of dicts, each with ``cvss_version`` (V3 or V4), ``vector`` (str),
@@ -398,9 +413,10 @@ def flaw_acknowledgment_add(
 
     Args:
         flaw_id: Flaw UUID or CVE id (required).
-        acknowledgments: List of dicts, each with ``name`` (str),
-            optional ``affiliation`` (str), ``from_upstream`` (bool),
-            ``embargoed`` (bool).
+        acknowledgments: List of dicts, each with ``name`` (str).
+            ``affiliation`` defaults to ``""`` and ``from_upstream`` defaults
+            to false (both required by OSIDB 5.21). ``embargoed`` is copied
+            from the parent flaw when omitted.
     """
     session = get_session()
 
@@ -683,6 +699,10 @@ def affect_update(
     concurrency) and current field values, then merges caller-provided fields
     over the existing data before issuing the PUT.
 
+    OSIDB 5.21 ``AffectPutRequest`` requires ``embargoed``, ``ps_update_stream``,
+    and ``updated_dt``. The parent ``flaw`` is not sent: ``AffectPutSerializer``
+    strips it and refuses reparenting.
+
     Uses raw HTTP to avoid an osidb-bindings validation bug where
     ``not_affected_justification`` values are rejected as invalid BlankEnum.
 
@@ -730,7 +750,6 @@ def affect_update(
         affect_data["resolution"] = ""
 
     affect_data["updated_dt"] = to_jsonable(getattr(current, "updated_dt", None))
-    affect_data["flaw"] = to_jsonable(getattr(current, "flaw", None))
     affect_data["embargoed"] = getattr(current, "embargoed", False)
 
     client = session.get_client_with_new_access_token()
@@ -761,7 +780,9 @@ def affect_update_bulk(
     Fetches all affects in a single list request via
     ``/osidb/api/v2/affects?uuid__in=...`` to obtain ``updated_dt`` for
     optimistic concurrency, merges caller-provided field overrides, then
-    sends one bulk PUT.
+    sends one bulk PUT. Each body keeps ``embargoed``, ``ps_update_stream``,
+    and ``updated_dt``. The parent ``flaw`` is omitted (OSIDB 5.21 ignores it
+    on PUT and refuses reparenting).
 
     Uses raw HTTP to avoid an osidb-bindings validation bug where
     ``not_affected_justification`` values are rejected as invalid BlankEnum.
@@ -840,7 +861,6 @@ def affect_update_bulk(
 
         affect_data["uuid"] = affect_uuid
         affect_data["updated_dt"] = to_jsonable(getattr(current, "updated_dt", None))
-        affect_data["flaw"] = to_jsonable(getattr(current, "flaw", None))
         affect_data["embargoed"] = getattr(current, "embargoed", False)
 
         payloads.append(affect_data)
@@ -1207,7 +1227,8 @@ def flaw_label_add(
         state: Label state (NEW, REQ, DONE, SKIP). Default NEW.
         contributor: Contributor name.
         label_type: Label type (alias, context_based, workflow, bu).
-            Required on create. ``product_family`` is read-only (system-assigned).
+            Required on create. OSIDB 5.21 ``FlawLabelPostRequest`` rejects a
+            body without ``type``. ``product_family`` is read-only.
         relevant: Whether the label is relevant (optional).
         reason: Optional human-readable reason (OSIDB-5346 workflow insights).
     """
@@ -1216,20 +1237,29 @@ def flaw_label_add(
     except ValueError:
         return {"ok": False, "error": "bad_request", "detail": "flaw_id must be a UUID for label operations"}
 
-    if (label_type or "").strip().lower() == "product_family":
+    label_type_value = (label_type or "").strip()
+    if not label_type_value:
+        return {
+            "ok": False,
+            "error": "bad_request",
+            "detail": (
+                "label_type is required on create "
+                "(alias, context_based, workflow, or bu)"
+            ),
+        }
+
+    if label_type_value.lower() == "product_family":
         return {
             "ok": False,
             "error": "bad_request",
             "detail": "product_family labels are read-only (system-assigned)",
         }
 
-    body: dict[str, Any] = {"name": name}
+    body: dict[str, Any] = {"name": name, "type": label_type_value}
     if state is not None:
         body["state"] = state
     if contributor is not None:
         body["contributor"] = contributor
-    if label_type is not None:
-        body["type"] = label_type
     if relevant is not None:
         body["relevant"] = relevant
     if reason is not None:
@@ -1445,6 +1475,10 @@ def flaw_acknowledgment_update(
         val = getattr(current, field, None)
         if val is not None:
             data[field] = to_jsonable(val)
+    if data.get("affiliation") is None:
+        data["affiliation"] = ""
+    if data.get("from_upstream") is None:
+        data["from_upstream"] = False
     data["updated_dt"] = to_jsonable(getattr(current, "updated_dt", None))
 
     if name is not None:

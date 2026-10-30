@@ -2,6 +2,7 @@
 
 ## 0.4.0
 
+- **OSIDB 5.21:** Acknowledgment creates and updates send `affiliation` (blank allowed) and `from_upstream` (default false). `flaw_label_add` rejects a missing `type`. Affect PUT bodies omit `flaw` and keep `embargoed`, `ps_update_stream`, and `updated_dt`. Flaw list tools accept `aegis_processed`, `workflow_state_isempty`, and `workflow_name_isempty`. Bindings pin is `osidb-bindings>=5.20.0,<6`. The 5.21 bindings package is not on PyPI yet, so those three filters use a raw GET until the generated client knows them.
 - **Tool profiles:** `OSIDB_MCP_PROFILE` is `core`, `lifecycle`, or `full` (default `full`, same catalog as before). `core` advertises 12 triage read tools. `lifecycle` adds the write tools used for vuln lifecycle work. Set this in Cursor `mcp.json` env to cut idle MCP tool-name tokens.
 - **Exploits tools:** Registered for `full` by default. Use `OSIDB_MCP_ENABLE_EXPLOITS=true` to enable them on a smaller profile.
 - **AEGIS tools:** Still registered only when `AEGIS_URL` is set.

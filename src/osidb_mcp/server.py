@@ -151,7 +151,9 @@ def create_server(settings: Settings) -> FastMCP:
         name="search_flaws",
         description=(
             "Search CVEs/flaws by keyword, CVE id(s), severity (impact), changed date range, "
-            "PS product modules or components, workflow, labels (``flaw_labels``), major incident state, embargo, and owner. "
+            "PS product modules or components, workflow, workflow_state_isempty, "
+            "workflow_name_isempty, aegis_processed, labels (``flaw_labels``), "
+            "major incident state, embargo, and owner. "
             "Keyword-only queries use OSIDB full-text search; structured filters use list APIs. "
             "Also supports ``query`` parameter for OSIM-compatible filter expressions using operators: "
             "``=`` (equals), ``!=`` (not equals), ``~`` (contains), ``and``, ``or``, ``()`` (grouping). "
@@ -178,7 +180,8 @@ def create_server(settings: Settings) -> FastMCP:
         name="flaws_list",
         description=(
             "List flaws with filters: components, affects (ps_module/ps_component/ps_update_stream), "
-            "workflow_state, impact, owner_isempty, embargoed, dates, etc. "
+            "workflow_state, workflow_state_isempty, workflow_name_isempty, "
+            "aegis_processed, impact, owner_isempty, embargoed, dates, etc. "
             "Supports ``query`` parameter for OSIM-compatible filter expressions with operators: "
             "``=`` (equals), ``!=`` (not equals), ``~`` (contains), ``and``, ``or``, and ``()`` for grouping. "
             "Fields usable in query: workflow_state, impact, owner, title, cve_id, embargoed, source, etc. "

@@ -28,6 +28,19 @@ AFFECT_CVSS_SCORES_EXTRA_KEYS = frozenset(_affect_cvss_list_mod.QUERY_PARAMS.key
 TRACKERS_EXTRA_KEYS = frozenset(_trackers_list_mod.QUERY_PARAMS.keys())
 
 FLAWS_QUERY_PARAM_TYPES = osidb_api_v2_flaws_list.QUERY_PARAMS
+# OSIDB 5.21 flaw-list filters. PyPI osidb-bindings stops at 5.20.0, whose
+# generated client does not accept these kwargs. Flaw list tools allow them
+# and send a raw GET when the installed bindings omit a key.
+OSIDB_521_FLAW_FILTERS: dict[str, type[Any]] = {
+    "aegis_processed": bool,
+    "workflow_state__isempty": bool,
+    "workflow_name__isempty": bool,
+}
+FLAWS_LIST_PARAM_TYPES: dict[str, Any] = {
+    **FLAWS_QUERY_PARAM_TYPES,
+    **OSIDB_521_FLAW_FILTERS,
+}
+FLAWS_LIST_ALLOWLIST = frozenset(FLAWS_LIST_PARAM_TYPES)
 AFFECTS_QUERY_PARAM_TYPES = osidb_api_v2_affects_list.QUERY_PARAMS
 LABELS_QUERY_PARAM_TYPES = _labels_list_mod.QUERY_PARAMS
 AFFECT_CVSS_SCORES_QUERY_PARAM_TYPES = _affect_cvss_list_mod.QUERY_PARAMS

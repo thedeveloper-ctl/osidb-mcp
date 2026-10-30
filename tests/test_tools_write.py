@@ -437,6 +437,27 @@ def test_ack_add_success(mock_get_session: MagicMock) -> None:
     assert result["ok"] is True
     assert len(result["created"]) == 1
     assert "partial" not in result
+    ack_data = session.flaws.acknowledgments.create.call_args[0][0]
+    assert ack_data["affiliation"] == "Org"
+    assert ack_data["from_upstream"] is False
+
+
+@patch("osidb_mcp.tools_write.get_session")
+def test_ack_add_defaults_required_fields(mock_get_session: MagicMock) -> None:
+    session = mock_get_session.return_value
+    session.flaws.retrieve.return_value = _mock_flaw_full(embargoed=False)
+    session.flaws.acknowledgments.create.return_value = _mock_subresource("ack-1")
+
+    result = flaw_acknowledgment_add(
+        flaw_id="aaa58a80-dd9c-43dd-ba19-61fa88a66714",
+        acknowledgments=[{"name": "Jane Doe"}],
+    )
+
+    assert result["ok"] is True
+    ack_data = session.flaws.acknowledgments.create.call_args[0][0]
+    assert ack_data["affiliation"] == ""
+    assert ack_data["from_upstream"] is False
+    assert ack_data["embargoed"] is False
 
 
 @patch("osidb_mcp.tools_write.get_session")
@@ -623,7 +644,10 @@ def test_affect_update_success(mock_get_session: MagicMock, mock_put: MagicMock)
     assert update_data["affectedness"] == "AFFECTED"
     assert update_data["resolution"] == "FIX"
     assert update_data["ps_component"] == "gstreamer1-plugins-bad-free"
+    assert update_data["ps_update_stream"] == "rhel-9.8.z"
+    assert update_data["embargoed"] is True
     assert update_data["updated_dt"] == "2026-06-08T14:00:00Z"
+    assert "flaw" not in update_data
 
 
 @patch("osidb_mcp.tools_write.requests.put")
@@ -1555,10 +1579,22 @@ def test_label_add_success(mock_get_session: MagicMock, mock_post: MagicMock) ->
     result = flaw_label_add(
         flaw_id="aaa58a80-dd9c-43dd-ba19-61fa88a66714",
         name="triage",
+        label_type="context_based",
     )
 
     assert result["ok"] is True
     assert result["label"]["name"] == "triage"
+    assert mock_post.call_args.kwargs["json"]["type"] == "context_based"
+
+
+def test_label_add_requires_type() -> None:
+    result = flaw_label_add(
+        flaw_id="aaa58a80-dd9c-43dd-ba19-61fa88a66714",
+        name="triage",
+    )
+    assert result["ok"] is False
+    assert result["error"] == "bad_request"
+    assert "label_type is required" in result["detail"]
 
 
 @patch("osidb_mcp.tools_write.requests.post")
@@ -1680,6 +1716,30 @@ def test_ack_update_success(mock_get_session: MagicMock) -> None:
     update_data = session.flaws.acknowledgments.update.call_args[0][2]
     assert update_data["name"] == "Updated Name"
     assert update_data["affiliation"] == "Org"
+    assert update_data["from_upstream"] is False
+
+
+@patch("osidb_mcp.tools_write.get_session")
+def test_ack_update_defaults_blank_affiliation(mock_get_session: MagicMock) -> None:
+    session = mock_get_session.return_value
+    current = MagicMock()
+    current.name = "Original"
+    current.affiliation = None
+    current.from_upstream = None
+    current.embargoed = False
+    current.updated_dt = "2026-06-08T12:00:00Z"
+    session.flaws.acknowledgments.retrieve.return_value = current
+    session.flaws.acknowledgments.update.return_value = _mock_subresource("ack-1")
+
+    result = flaw_acknowledgment_update(
+        flaw_id="CVE-2026-52719",
+        acknowledgment_id="ack-1",
+    )
+
+    assert result["ok"] is True
+    update_data = session.flaws.acknowledgments.update.call_args[0][2]
+    assert update_data["affiliation"] == ""
+    assert update_data["from_upstream"] is False
 
 
 @patch("osidb_mcp.tools_write.get_session")
@@ -1986,7 +2046,11 @@ def test_affect_update_bulk_success(mock_get_session: MagicMock, mock_put: Magic
     assert payloads[0]["uuid"] == "aaa-111"
     assert payloads[0]["affectedness"] == "AFFECTED"
     assert payloads[0]["resolution"] == "FIX"
+    assert payloads[0]["ps_update_stream"] == "rhel-9.8.z"
+    assert payloads[0]["embargoed"] is True
     assert payloads[0]["updated_dt"] == "2026-06-08T14:00:00Z"
+    assert "flaw" not in payloads[0]
+    assert "flaw" not in payloads[1]
     assert payloads[1]["uuid"] == "bbb-222"
     assert payloads[1]["resolution"] == "DEFER"
 

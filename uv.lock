@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.10"
 
 [[package]]
@@ -528,7 +528,7 @@ name = "exceptiongroup"
 version = "1.3.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "typing-extensions", marker = "python_full_version < '3.13'" },
+    { name = "typing-extensions" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/50/79/66800aadf48771f6b62f7eb014e352e5d06856655206165d775e675a02c9/exceptiongroup-1.3.1.tar.gz", hash = "sha256:8b412432c6055b0b7d14c310000ae93352ed6754f70fa8f7c34141f91c4e3219", size = 30371, upload-time = "2025-11-21T23:01:54.787Z" }
 wheels = [
@@ -1038,7 +1038,7 @@ wheels = [
 
 [[package]]
 name = "osidb-bindings"
-version = "5.13.0"
+version = "5.20.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
@@ -1047,14 +1047,14 @@ dependencies = [
     { name = "requests" },
     { name = "requests-gssapi" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/ea/b2/c783b487c9d33d242993727f3ee11cf5c8c964dede4465f3fb704b7f34fa/osidb_bindings-5.13.0.tar.gz", hash = "sha256:1df96df59f71a53d2f7f2bb09d38103f84b8ae3ad3c1ab4988cf3d94afb7cc2e", size = 333128, upload-time = "2026-08-03T08:11:25.998Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/24/6b/a82dbb20da070f24bce95692b7381d52b51b7010cb66821181ece04eff1f/osidb_bindings-5.20.0.tar.gz", hash = "sha256:ea6cc95966384fd92866bb09f0f7034f2cc4582c03b0a9138db18346653c641b", size = 396305, upload-time = "2026-10-20T13:39:33.092Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/49/bf/9d65b4db1be75aed58c337c14cb0bab759d485067382162c8c6c0c9c164e/osidb_bindings-5.13.0-py3-none-any.whl", hash = "sha256:847fd986c27a1dbbf3ab8496accb49fead256db068cdc8814faac2c0d537307b", size = 826966, upload-time = "2026-08-03T08:11:24.494Z" },
+    { url = "https://files.pythonhosted.org/packages/d8/14/ec58649ad134a27b494b051e15811012ab31018f0dfecd7254af99cecd4b/osidb_bindings-5.20.0-py3-none-any.whl", hash = "sha256:540036900f553351ca9109336d6d7ef4797bae2fd41bc3d6b3f400a00f18418b", size = 1037824, upload-time = "2026-10-20T13:39:31.291Z" },
 ]
 
 [[package]]
 name = "osidb-mcp"
-version = "0.2.1"
+version = "0.4.0"
 source = { editable = "." }
 dependencies = [
     { name = "mcp" },
@@ -1075,7 +1075,7 @@ dotenv = [
 [package.metadata]
 requires-dist = [
     { name = "mcp", specifier = ">=1.0,<2" },
-    { name = "osidb-bindings", specifier = ">=5.12.0,<6" },
+    { name = "osidb-bindings", specifier = ">=5.20.0,<6" },
     { name = "pip-audit", marker = "extra == 'dev'", specifier = ">=2.7" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
     { name = "python-dotenv", marker = "extra == 'dev'", specifier = ">=1.0" },

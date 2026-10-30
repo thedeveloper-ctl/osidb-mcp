@@ -6,6 +6,7 @@ import requests
 
 from osidb_mcp.tools_read import (
     affect_cvss_score_get,
+    flaws_list,
     alert_get,
     alerts_list,
     exploits_cve_map,
@@ -544,3 +545,43 @@ def test_tracker_suggestions_http_error(mock_get_session: MagicMock) -> None:
 
     assert result["ok"] is False
     assert result["status_code"] == 404
+
+
+@patch("osidb_mcp.tools_read._bindings_support_flaw_query", return_value=False)
+@patch("osidb_mcp.tools_read.requests.get")
+@patch("osidb_mcp.tools_read.get_session")
+def test_flaws_list_sends_osidb_521_filters_raw(
+    mock_get_session: MagicMock,
+    mock_get: MagicMock,
+    _mock_supported: MagicMock,
+) -> None:
+    session = mock_get_session.return_value
+    client = session.get_client_with_new_access_token.return_value
+    client.base_url = "https://osidb.example.com"
+    client.get_headers.return_value = {"Authorization": "Bearer tok"}
+    client.verify_ssl = True
+    client.get_auth.return_value = None
+    client.get_timeout.return_value = 30.0
+
+    resp = MagicMock()
+    resp.raise_for_status.return_value = None
+    resp.json.return_value = {
+        "count": 1,
+        "next": None,
+        "results": [{"uuid": "flaw-1", "cve_id": "CVE-2026-1"}],
+    }
+    mock_get.return_value = resp
+
+    result = flaws_list(
+        aegis_processed=False,
+        workflow_state_isempty=True,
+        workflow_name_isempty=False,
+    )
+
+    assert result["ok"] is True
+    assert result["count"] == 1
+    params = mock_get.call_args.kwargs["params"]
+    assert ("aegis_processed", "false") in params
+    assert ("workflow_state__isempty", "true") in params
+    assert ("workflow_name__isempty", "false") in params
+    session.flaws.retrieve_list.assert_not_called()

@@ -41,7 +41,8 @@ from osidb_mcp.query_filters import (
     AFFECT_CVSS_SCORES_EXTRA_KEYS,
     AFFECT_CVSS_SCORES_QUERY_PARAM_TYPES,
     DEFAULT_LIST_LIMIT,
-    FLAWS_EXTRA_KEYS,
+    FLAWS_LIST_ALLOWLIST,
+    FLAWS_LIST_PARAM_TYPES,
     FLAWS_QUERY_PARAM_TYPES,
     LABELS_EXTRA_KEYS,
     LABELS_QUERY_PARAM_TYPES,
@@ -211,6 +212,9 @@ def _build_flaws_kwargs(
     owner: str | None,
     owner_in: list[str] | None,
     owner_isempty: bool | None,
+    aegis_processed: bool | None,
+    workflow_state_isempty: bool | None,
+    workflow_name_isempty: bool | None,
     cve_id_in: list[str] | None,
     changed_after: str | None,
     changed_before: str | None,
@@ -264,6 +268,12 @@ def _build_flaws_kwargs(
         kw["owner__in"] = owner_in
     if owner_isempty is not None:
         kw["owner__isempty"] = owner_isempty
+    if aegis_processed is not None:
+        kw["aegis_processed"] = aegis_processed
+    if workflow_state_isempty is not None:
+        kw["workflow_state__isempty"] = workflow_state_isempty
+    if workflow_name_isempty is not None:
+        kw["workflow_name__isempty"] = workflow_name_isempty
     if cve_id_in:
         kw["cve_id__in"] = cve_id_in
     ca = parse_dt(changed_after) if changed_after else None
@@ -293,6 +303,60 @@ def _build_flaws_kwargs(
     return kw
 
 
+class _JsonPage:
+    """Adapt a raw OSIDB list JSON body for ``paginated_summary``."""
+
+    def __init__(self, data: dict[str, Any]) -> None:
+        self.results = data.get("results") or []
+        self.count = data.get("count")
+        self.next_ = data.get("next")
+
+
+def _query_scalar(value: Any) -> str:
+    if isinstance(value, datetime.datetime):
+        return value.isoformat()
+    if isinstance(value, datetime.date):
+        return value.isoformat()
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    enum_value = getattr(value, "value", None)
+    if enum_value is not None and not isinstance(value, (str, bytes)):
+        return str(enum_value)
+    return str(value)
+
+
+def _bindings_support_flaw_query(params: dict[str, Any]) -> bool:
+    return all(key in FLAWS_QUERY_PARAM_TYPES for key in params)
+
+
+def _flaws_list_raw(params: dict[str, Any]) -> dict[str, Any]:
+    """GET /osidb/api/v2/flaws for filters the installed bindings cannot send."""
+    session = get_session()
+    client = session.get_client_with_new_access_token()
+    query: list[tuple[str, str]] = []
+    for key, value in params.items():
+        if value is None:
+            continue
+        if isinstance(value, list):
+            for item in value:
+                query.append((key, _query_scalar(item)))
+        else:
+            query.append((key, _query_scalar(value)))
+    resp = requests.get(
+        f"{client.base_url}/osidb/api/v2/flaws",
+        params=query,
+        headers=client.get_headers(),
+        verify=client.verify_ssl,
+        auth=client.get_auth(),
+        timeout=client.get_timeout(),
+    )
+    resp.raise_for_status()
+    data = resp.json()
+    if not isinstance(data, dict):
+        raise ValueError("OSIDB flaw list response was not a JSON object")
+    return data
+
+
 def flaws_list(
     *,
     query: str | None = None,
@@ -315,6 +379,9 @@ def flaws_list(
     owner: str | None = None,
     owner_in: list[str] | None = None,
     owner_isempty: bool | None = None,
+    aegis_processed: bool | None = None,
+    workflow_state_isempty: bool | None = None,
+    workflow_name_isempty: bool | None = None,
     cve_id_in: list[str] | None = None,
     changed_after: str | None = None,
     changed_before: str | None = None,
@@ -355,6 +422,9 @@ def flaws_list(
             owner=owner,
             owner_in=owner_in,
             owner_isempty=owner_isempty,
+            aegis_processed=aegis_processed,
+            workflow_state_isempty=workflow_state_isempty,
+            workflow_name_isempty=workflow_name_isempty,
             cve_id_in=cve_id_in,
             changed_after=changed_after,
             changed_before=changed_before,
@@ -371,16 +441,24 @@ def flaws_list(
         merged = merge_extra_query(
             base,
             extra_query,
-            allowlist=FLAWS_EXTRA_KEYS,
-            param_types=FLAWS_QUERY_PARAM_TYPES,
+            allowlist=FLAWS_LIST_ALLOWLIST,
+            param_types=FLAWS_LIST_PARAM_TYPES,
         )
-        resp = get_session().flaws.retrieve_list(
-            api_version=api_version,
-            **merged,
-        )
+        if _bindings_support_flaw_query(merged):
+            resp = get_session().flaws.retrieve_list(
+                api_version=api_version,
+                **merged,
+            )
+            page = paginated_summary(resp, limit=lim, offset=off)
+        else:
+            page = paginated_summary(
+                _JsonPage(_flaws_list_raw(merged)),
+                limit=lim,
+                offset=off,
+            )
         return {
             "ok": True,
-            **paginated_summary(resp, limit=lim, offset=off),
+            **page,
         }
     except (requests.RequestException, ValueError) as e:
         if isinstance(e, ValueError):
@@ -410,6 +488,9 @@ def flaws_count(
     owner: str | None = None,
     owner_in: list[str] | None = None,
     owner_isempty: bool | None = None,
+    aegis_processed: bool | None = None,
+    workflow_state_isempty: bool | None = None,
+    workflow_name_isempty: bool | None = None,
     cve_id_in: list[str] | None = None,
     changed_after: str | None = None,
     changed_before: str | None = None,
@@ -443,6 +524,9 @@ def flaws_count(
             owner=owner,
             owner_in=owner_in,
             owner_isempty=owner_isempty,
+            aegis_processed=aegis_processed,
+            workflow_state_isempty=workflow_state_isempty,
+            workflow_name_isempty=workflow_name_isempty,
             cve_id_in=cve_id_in,
             changed_after=changed_after,
             changed_before=changed_before,
@@ -462,10 +546,15 @@ def flaws_count(
         merged = merge_extra_query(
             base,
             extra_query,
-            allowlist=FLAWS_EXTRA_KEYS,
-            param_types=FLAWS_QUERY_PARAM_TYPES,
+            allowlist=FLAWS_LIST_ALLOWLIST,
+            param_types=FLAWS_LIST_PARAM_TYPES,
         )
-        n = get_session().flaws.count(api_version=api_version, **merged)
+        if _bindings_support_flaw_query(merged):
+            n = get_session().flaws.count(api_version=api_version, **merged)
+        else:
+            count_params = dict(merged)
+            count_params["limit"] = 1
+            n = _flaws_list_raw(count_params).get("count")
         return {"ok": True, "count": n}
     except (requests.RequestException, ValueError) as e:
         if isinstance(e, ValueError):
@@ -1356,6 +1445,9 @@ def search_flaws(
     workflow_state_in: list[str] | None = None,
     workflow_name: str | None = None,
     workflow_name_in: list[str] | None = None,
+    aegis_processed: bool | None = None,
+    workflow_state_isempty: bool | None = None,
+    workflow_name_isempty: bool | None = None,
     major_incident_state: str | None = None,
     major_incident_state_in: list[str] | None = None,
     embargoed: bool | None = None,
@@ -1384,6 +1476,9 @@ def search_flaws(
             workflow_state_in,
             workflow_name,
             workflow_name_in,
+            aegis_processed is not None,
+            workflow_state_isempty is not None,
+            workflow_name_isempty is not None,
             major_incident_state,
             major_incident_state_in,
             embargoed is not None,
@@ -1415,6 +1510,9 @@ def search_flaws(
         workflow_state_in=workflow_state_in,
         workflow_name=workflow_name,
         workflow_name_in=workflow_name_in,
+        aegis_processed=aegis_processed,
+        workflow_state_isempty=workflow_state_isempty,
+        workflow_name_isempty=workflow_name_isempty,
         major_incident_state=major_incident_state,
         major_incident_state_in=major_incident_state_in,
         embargoed=embargoed,
