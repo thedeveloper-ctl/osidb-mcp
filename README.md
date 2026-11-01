@@ -30,6 +30,27 @@ Optional keys forwarded by bindings: `BUGZILLA_API_KEY`, `JIRA_ACCESS_TOKEN`, `J
 
 ## Cursor / Claude MCP snippet
 
+Using `uvx` (recommended — no pre-install required):
+
+```json
+{
+  "mcpServers": {
+    "osidb": {
+      "command": "uvx",
+      "args": ["osidb-mcp"],
+      "env": {
+        "OSIDB_BASE_URL": "https://your-internal-osidb",
+        "OSIDB_AUTH": "kerberos",
+        "OSIDB_VERIFY_SSL": "true",
+        "OSIDB_MCP_ACCESS_MODE": "readonly"
+      }
+    }
+  }
+}
+```
+
+Or if `osidb-mcp` is already installed globally:
+
 ```json
 {
   "mcpServers": {

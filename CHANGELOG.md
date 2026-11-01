@@ -20,6 +20,10 @@
 - **Removed deprecated workflow tools:** `flaw_promote`, `flaw_reject`, `flaw_reset`, and `flaw_revert` have been removed entirely. They were no-ops on OSIDB >= 5.12. Use `flaw_label_add(name='approved', label_type='workflow')` to reach DONE, or `flaw_label_add(name='rejected', label_type='workflow')` to reject. Workflow state is now auto-classified based on flaw data completeness.
 - **Documentation:** README write tools table updated to reflect all 38 write tools (was 8). TOOLS.md updated with workflow model documentation, write tool reference, and audit tool sections. CHANGELOG covers all changes since 0.2.0.
 
+## 0.2.2
+
+- **Fix osidb-bindings >= 5.15 compatibility:** `workflow_state` / `flaw__workflow_state` filters pass `list[str]` directly, matching current bindings codegen (no per-parameter workflow-state enum modules).
+
 ## 0.2.1
 
 - **Fix `extra_query` dates:** ISO date/datetime strings in `extra_query` (e.g. `created_dt__gte`, `reported_dt__gte`, `created_dt__date__gte`) are now parsed before calling `osidb-bindings`, which expects Python `datetime`/`date` objects. Fixes `'str' object has no attribute 'isoformat'` when filtering flaws by creation or report date.

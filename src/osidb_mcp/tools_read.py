@@ -251,7 +251,7 @@ def _build_flaws_kwargs(
     if affects_ps_update_stream_in:
         kw["affects__ps_update_stream__in"] = affects_ps_update_stream_in
     if workflow_state:
-        kw["workflow_state"] = _workflow_in(workflow_state)
+        kw["workflow_state"] = workflow_state
     if workflow_state_in:
         kw["workflow_state__in"] = _workflow_in(workflow_state_in)
     if workflow_name:
@@ -653,7 +653,7 @@ def affects_list(
                 _parse_uuid_param("flaw_uuid_in", u) for u in flaw_uuid_in
             ]
         if flaw_workflow_state:
-            kw["flaw__workflow_state"] = _affects_workflow_in(flaw_workflow_state)
+            kw["flaw__workflow_state"] = flaw_workflow_state
         if flaw_workflow_state_in:
             kw["flaw__workflow_state__in"] = _affects_workflow_in(
                 flaw_workflow_state_in
